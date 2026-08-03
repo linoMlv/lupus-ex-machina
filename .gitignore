@@ -1,0 +1,76 @@
+# --- Documentation de travail interne (hors dépôt) ---
+.local-dev/
+CLAUDE.md
+.claude/
+
+# --- Assets : seul le GLB est utilisé par three.js ---
+# Les sources FBX et OBJ (~21 Mo) et les archives d'origine (~7 Mo) restent sur
+# disque mais ne sont pas versionnées.
+assets/**/FBX format/
+assets/**/OBJ format/
+assets/*.zip
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# --- Node / frontend ---
+node_modules/
+.pnpm-store/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Secrets et configuration locale ---
+.env
+.env.*
+!.env.example
+
+# --- Données d'exécution ---
+data/
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.log
+
+# --- Système et éditeurs ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
