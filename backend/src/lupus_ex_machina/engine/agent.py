@@ -20,4 +20,4 @@ class Agent(Protocol):
 
     def decide(self, view: PlayerView) -> Intent:
         """Return what this player wants to do, given what they know."""
-        ...
+        ...  # pragma: no cover - a Protocol body carries no behaviour

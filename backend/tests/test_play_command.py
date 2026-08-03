@@ -6,7 +6,8 @@ agents, no model and no server.
 
 import pytest
 
-from lupus_ex_machina.play import main
+from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.play import ROLE_LABELS, main
 
 
 def test_a_game_is_played_and_reported(capsys: pytest.CaptureFixture[str]) -> None:
@@ -51,3 +52,8 @@ def test_the_roles_are_revealed_only_once_the_game_is_over(
     printed = capsys.readouterr().out
 
     assert printed.index("Victoire") < printed.index("loup-garou")
+
+
+def test_every_role_the_engine_knows_can_be_named() -> None:
+    """A role without a label would only break once the game is over."""
+    assert set(ROLE_LABELS) == set(RoleName)

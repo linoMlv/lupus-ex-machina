@@ -163,13 +163,16 @@ make test            # suite de tests backend, avec couverture
 make lint            # ruff, mypy strict, oxlint, prettier, tsc
 ```
 
-Pour voir une partie se dérouler en console, jouée par des agents scriptés — aucune clé d'API n'est
+Pour jouer une partie complète en console avec des agents scriptés — aucune clé d'API n'est
 nécessaire :
 
 ```bash
 make play                      # 8 joueurs, graine 1
-make play SEED=7 PLAYERS=6     # partie reproductible à volonté
+make play SEED=7 PLAYERS=6     # autre graine, autre effectif
 ```
+
+La commande annonce la table, joue la partie, puis affiche le camp vainqueur et les rôles de chacun.
+Une même graine rejoue exactement la même partie.
 
 Pour développer, deux processus : l'API d'un côté, Vite de l'autre — le serveur de développement
 relaie vers l'API les chemins qui lui appartiennent.

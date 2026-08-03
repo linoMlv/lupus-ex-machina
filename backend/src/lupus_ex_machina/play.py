@@ -16,6 +16,7 @@ from lupus_ex_machina.agents.scripted import RandomAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import (
     MAXIMUM_PLAYERS,
@@ -26,14 +27,23 @@ from lupus_ex_machina.engine.setup import (
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 
-ROLE_LABELS = {"werewolf": "loup-garou", "villager": "villageois"}
-OUTCOME_LABELS = {
+# Keyed by the enum members rather than by their raw values, so a mistyped key is
+# a type error. Completeness is not something a type checker can prove, so a test
+# holds it: without it, a role added in J4 would only fail at the very end of a
+# finished game, when the roles are revealed.
+ROLE_LABELS: dict[RoleName, str] = {
+    RoleName.VILLAGER: "villageois",
+    RoleName.WEREWOLF: "loup-garou",
+}
+OUTCOME_LABELS: dict[Outcome, str] = {
     Outcome.VILLAGE_WINS: "Victoire du village",
     Outcome.WEREWOLVES_WIN: "Victoire des loups-garous",
 }
 
 DEFAULT_PLAYERS = 8
-DEFAULT_SEED = 0
+# Same default as the `play` target of the Makefile, so both entry points run
+# the same game when no seed is given.
+DEFAULT_SEED = 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -94,4 +104,4 @@ def _report(result: GameResult) -> None:
     print("Rôles :")
     for player in result.state.players:
         fate = "survit" if player.alive else "meurt"
-        print(f"  {player.name} — {ROLE_LABELS[player.role.value]} — {fate}")
+        print(f"  {player.name} — {ROLE_LABELS[player.role]} — {fate}")
