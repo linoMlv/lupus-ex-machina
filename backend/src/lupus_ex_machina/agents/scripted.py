@@ -1,8 +1,12 @@
 """Agents that play without a language model.
 
 They serve two purposes: they make a full game playable at no cost (GL-2), and
-they are the fast, free regression suite of the rules. Each one leans on the
-moves the view declares legal, so none of them can produce a refused intent.
+they are the fast, free regression suite of the rules. All but one lean on the
+moves the view declares legal, so they never produce a refused intent.
+
+The exception is :class:`RogueAgent`, which does nothing else. A game is only
+half exercised by agents that behave: models will not, and the engine's refusals
+are a normal path that deserves to be walked as often as the others.
 """
 
 from lupus_ex_machina.engine.intents import (
@@ -46,6 +50,20 @@ class AlwaysAccuseAgent:
         if IntentKind.VOTE in view.allowed_intents:
             return CastVote(target=view.vote_targets[0] if view.vote_targets else None)
         return Wait()
+
+
+class RogueAgent:
+    """Always tries to devour someone, whatever the phase allows.
+
+    Every intent it plays is refused outside the pack's turn, which is what
+    makes it the only scripted way to exercise the engine's refusals — and the
+    only way a test about them can be sure it is testing anything at all.
+    """
+
+    def decide(self, view: PlayerView) -> Intent:
+        """Play an intent the rules almost always refuse."""
+        prey = view.living_others[0] if view.living_others else view.self_id
+        return RoleAction(action=RoleActionName.DEVOUR, target=prey)
 
 
 class RandomAgent:

@@ -8,13 +8,16 @@ import itertools
 
 import pytest
 
-from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, RandomAgent, SilentAgent
+from lupus_ex_machina.agents.scripted import (
+    AlwaysAccuseAgent,
+    RandomAgent,
+    RogueAgent,
+    SilentAgent,
+)
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
-    RoleAction,
-    RoleActionName,
     Speak,
     Wait,
 )
@@ -106,10 +109,26 @@ def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None
 # --- Determinism ------------------------------------------------------------
 
 
+def game_of(result: GameResult) -> tuple[object, ...]:
+    """Everything a seed is supposed to reproduce.
+
+    The journal is compared fact by fact, envelope included, minus the one field
+    a seed cannot govern: the timestamps come from the wall clock, and belong to
+    the recording rather than to the game.
+    """
+    return (
+        result.state,
+        result.outcome,
+        result.rounds,
+        result.rejected_intents,
+        tuple((event.sequence, event.phase, event.day, event.payload) for event in result.journal),
+    )
+
+
 def test_two_games_with_the_same_seed_are_identical() -> None:
     first, second = play(seed=7), play(seed=7)
 
-    assert first == second
+    assert game_of(first) == game_of(second)
 
 
 def test_different_seeds_produce_different_games() -> None:
@@ -158,15 +177,6 @@ def test_no_game_with_two_survivors_or_fewer_is_still_running(wolves: int, villa
 
 
 # --- Illegal intents --------------------------------------------------------
-
-
-class RogueAgent:
-    """An agent that answers with an intent the rules refuse, as models do."""
-
-    def decide(self, view: PlayerView) -> Intent:
-        """Always try to devour someone, whatever the phase allows."""
-        prey = view.living_others[0] if view.living_others else view.self_id
-        return RoleAction(action=RoleActionName.DEVOUR, target=prey)
 
 
 def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:

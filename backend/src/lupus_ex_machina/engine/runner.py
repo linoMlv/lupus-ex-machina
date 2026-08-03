@@ -1,9 +1,15 @@
-"""Playing a game from Night 0 to the end.
+"""Playing a game from Night 0 to the end, and writing down what happened.
 
 The loop is deliberately plain here: everyone speaks in seat order, and a round
 ends when everyone has voted (D-013). The bidding protocol that decides *who*
 speaks is the heart of the project, and it belongs to J5 — putting a placeholder
 for it now would only have to be undone.
+
+Every change the game goes through is recorded as a fact (D-040). Two habits
+keep that honest: a phase is never entered except through :meth:`_Run.enter`,
+which transitions and records in one move, and a ballot is never cast except
+through :meth:`_Run._cast`. A caller that could do one without the other is a
+caller that eventually does.
 
 Two safety nets keep a game finite. Inside a day, a budget of speaking rounds
 after which the remaining players are carried to a blank vote: waiting forever is
@@ -19,9 +25,28 @@ from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.errors import EngineError, IllegalIntentError
+from lupus_ex_machina.engine.events import (
+    BallotAnnounced,
+    BallotCast,
+    Event,
+    EventPayload,
+    GameEnded,
+    IntentRejected,
+    NightResolved,
+    NightTargetDesignated,
+    PackRevealed,
+    PhaseEntered,
+    PlayerSeated,
+    RoleAssigned,
+    RoleRevealed,
+    SpeechDelivered,
+    VoteResolved,
+)
 from lupus_ex_machina.engine.intents import CastVote, Intent, RoleAction, Speak, Wait
+from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day, resolve_night
 from lupus_ex_machina.engine.roles import Team
 from lupus_ex_machina.engine.state import GameState
@@ -42,6 +67,18 @@ Agents = Mapping[PlayerId, Agent]
 # the new state and whoever died, if anyone.
 Resolver = Callable[[GameState], tuple[GameState, PlayerId | None]]
 
+# How a closed phase announces its outcome. Both resolutions produce the same
+# shape — a victim or nobody — but they are two different facts of the game.
+Announcement = Callable[[PlayerId | None], EventPayload]
+
+
+def _vote_outcome(victim: PlayerId | None) -> EventPayload:
+    return VoteResolved(eliminated=victim)
+
+
+def _night_outcome(victim: PlayerId | None) -> EventPayload:
+    return NightResolved(victim=victim)
+
 
 class GameDidNotEndError(EngineError, RuntimeError):
     """The round budget ran out — always an engine bug, never a game outcome."""
@@ -56,6 +93,7 @@ class GameResult(BaseModel):
     outcome: Outcome
     rounds: int
     rejected_intents: int = 0
+    journal: tuple[Event, ...] = ()
 
 
 def play_game(
@@ -63,13 +101,24 @@ def play_game(
     agents: Agents,
     *,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
+    journal: Journal | None = None,
+    policy: InformationPolicy | None = None,
 ) -> GameResult:
-    """Play a full game and return who won."""
-    run = _Run(agents)
+    """Play a full game and return who won.
+
+    A journal is opened for the game when the caller does not supply one, so
+    playing never comes without a record of what happened.
+    """
+    run = _Run(
+        agents,
+        journal if journal is not None else Journal(),
+        policy if policy is not None else InformationPolicy(),
+    )
+    state = run.open_the_game(state)
     state = run.play_night_zero(state)
 
     for round_number in range(1, max_rounds + 1):
-        state = state.entering(Phase.DAY, day=round_number)
+        state = run.enter(state, Phase.DAY, day=round_number)
 
         state, outcome = run.play_day(state)
         if outcome is not None:
@@ -83,13 +132,33 @@ def play_game(
 
 
 class _Run:
-    """Bookkeeping of a single game: the agents, and what they got wrong."""
+    """Bookkeeping of a single game: the agents, the journal, and what went wrong."""
 
-    def __init__(self, agents: Agents) -> None:
+    def __init__(self, agents: Agents, journal: Journal, policy: InformationPolicy) -> None:
         self._agents = agents
+        self._journal = journal
+        self._policy = policy
         self._rejected = 0
 
     # --- Phases ----------------------------------------------------------
+
+    def open_the_game(self, state: GameState) -> GameState:
+        """Seat the table, deal the roles, and let the pack meet (D-032).
+
+        Seats first, roles after: everyone at the table is public, what each was
+        dealt is not, so a filtered journal still opens on a whole table.
+        """
+        for player in state.players:
+            self._journal.record(
+                PlayerSeated(player=player.id, name=player.name, seat=player.seat), at=state
+            )
+        for player in state.players:
+            self._journal.record(RoleAssigned(player=player.id, role=player.role), at=state)
+
+        pack = tuple(player.id for player in state.players if player.team is Team.WEREWOLVES)
+        self._journal.record(PackRevealed(members=pack), at=state)
+        self._journal.record(PhaseEntered(phase=state.phase, day=state.day), at=state)
+        return state
 
     def play_night_zero(self, state: GameState) -> GameState:
         """Let everyone take in the situation. No action is possible (D-032).
@@ -111,15 +180,21 @@ class _Run:
         else:
             state = self._carry_the_undecided_to_a_blank_vote(state)
 
-        return self._resolve(state, resolve_day)
+        return self._resolve(state, resolve_day, _vote_outcome)
 
     def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
         """Ask the pack for its prey, then resolve the night."""
-        state = state.entering(Phase.NIGHT)
+        state = self.enter(state, Phase.NIGHT)
         for wolf in state.living_of_team(Team.WEREWOLVES):
             state = self._apply(state, wolf.id, self._ask(state, wolf.id))
 
-        return self._resolve(state, resolve_night)
+        return self._resolve(state, resolve_night, _night_outcome)
+
+    def enter(self, state: GameState, phase: Phase, *, day: int | None = None) -> GameState:
+        """Move to another phase and record it. The only way a phase is entered."""
+        state = state.entering(phase, day=day)
+        self._journal.record(PhaseEntered(phase=state.phase, day=state.day), at=state)
+        return state
 
     # --- Steps -----------------------------------------------------------
 
@@ -133,22 +208,36 @@ class _Run:
     def _carry_the_undecided_to_a_blank_vote(self, state: GameState) -> GameState:
         for player in state.living:
             if not state.has_voted(player.id):
-                state = state.with_ballot_from(player.id)
+                state = self._cast(state, player.id)
         return state
 
     def _resolve(
         self,
         state: GameState,
         resolver: Resolver,
+        announce: Announcement,
     ) -> tuple[GameState, Outcome | None]:
         """Apply a resolution, then evaluate the victory — in that order (D-059)."""
-        state = state.entering(Phase.RESOLUTION)
-        state, _ = resolver(state)
+        state = self.enter(state, Phase.RESOLUTION)
+        state, victim = resolver(state)
+        self._journal.record(announce(victim), at=state)
+        self._reveal_the_role_of(state, victim)
 
         outcome = evaluate_victory(state)
         if outcome is not None:
-            return state.entering(Phase.ENDED), outcome
+            state = self.enter(state, Phase.ENDED)
+            self._journal.record(GameEnded(outcome=outcome), at=state)
+            return state, outcome
         return state, None
+
+    def _reveal_the_role_of(self, state: GameState, victim: PlayerId | None) -> None:
+        """Announce what the deceased was, when the configuration allows it (D-072).
+
+        Death itself was already recorded, and is never configurable.
+        """
+        if victim is None or not self._policy.reveal_role_on_death:
+            return
+        self._journal.record(RoleRevealed(player=victim, role=state.player(victim).role), at=state)
 
     # --- Agents ----------------------------------------------------------
 
@@ -159,21 +248,43 @@ class _Run:
         """Validate then apply. An intent refused costs its author a turn, nothing more."""
         try:
             validate_intent(state, actor, intent)
-        except IllegalIntentError:
+        except IllegalIntentError as refusal:
             self._rejected += 1
+            self._journal.record(IntentRejected(actor=actor, reason=str(refusal)), at=state)
             return state
 
         match intent:
             case CastVote():
-                return state.with_ballot_from(actor, intent.target)
+                return self._cast(state, actor, intent.target)
             case RoleAction():
-                return state.with_night_choice_from(actor, intent.target)
-            case Speak() | Wait():
-                # Speech carries no state in J2: the transcript is born with the
-                # event journal (J3), and the bidding that gives it weight in J5.
+                state = state.with_night_choice_from(actor, intent.target)
+                self._journal.record(
+                    NightTargetDesignated(actor=actor, target=intent.target), at=state
+                )
+                return state
+            case Speak():
+                self._journal.record(SpeechDelivered(speaker=actor, speech=intent.speech), at=state)
+                return state
+            case Wait():
+                # Silence leaves the state untouched, and says nothing anyone
+                # could act on while the floor still goes round the table. It
+                # becomes a fact worth recording when the bidding does (J5).
                 return state
             case _:  # pragma: no cover - the union is closed, mypy proves this is dead
                 assert_never(intent)
+
+    def _cast(self, state: GameState, voter: PlayerId, target: PlayerId | None = None) -> GameState:
+        """Record a vote. The only way a ballot enters the game.
+
+        Two facts, because the rules address two audiences: *that* someone voted
+        closes the round and is public (D-051), *whom* they named stays theirs
+        until the count — unless the ballot is blank, which is public at once
+        (D-027). The audience of each is settled by the fact itself.
+        """
+        state = state.with_ballot_from(voter, target)
+        self._journal.record(BallotCast(voter=voter, target=target), at=state)
+        self._journal.record(BallotAnnounced(voter=voter), at=state)
+        return state
 
     # --- Result ----------------------------------------------------------
 
@@ -188,4 +299,5 @@ class _Run:
             outcome=outcome,
             rounds=rounds,
             rejected_intents=self._rejected,
+            journal=self._journal.events,
         )
