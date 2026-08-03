@@ -12,7 +12,7 @@ budget of rounds whose only purpose is to turn a hypothetical deadlock into a
 loud failure instead of a hang.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import assert_never
 
 from pydantic import BaseModel, ConfigDict
@@ -37,6 +37,10 @@ DEFAULT_MAX_ROUNDS = 100
 SPEAKING_ROUNDS_PER_DAY = 8
 
 Agents = Mapping[PlayerId, Agent]
+
+# What `resolve_day` and `resolve_night` both are: they close a phase, returning
+# the new state and whoever died, if anyone.
+Resolver = Callable[[GameState], tuple[GameState, PlayerId | None]]
 
 
 class GameDidNotEndError(EngineError, RuntimeError):
@@ -88,9 +92,14 @@ class _Run:
     # --- Phases ----------------------------------------------------------
 
     def play_night_zero(self, state: GameState) -> GameState:
-        """Let everyone take in the situation. No action is possible (D-032)."""
+        """Let everyone take in the situation. No action is possible (D-032).
+
+        Intents are judged here like anywhere else, even though nothing legal on
+        Night 0 carries an effect: an agent that acts out of turn must be counted
+        as refused rather than quietly ignored.
+        """
         for player in state.living:
-            self._ask(state, player.id)
+            state = self._apply(state, player.id, self._ask(state, player.id))
         return state
 
     def play_day(self, state: GameState) -> tuple[GameState, Outcome | None]:
@@ -130,11 +139,11 @@ class _Run:
     def _resolve(
         self,
         state: GameState,
-        resolver: object,
+        resolver: Resolver,
     ) -> tuple[GameState, Outcome | None]:
         """Apply a resolution, then evaluate the victory — in that order (D-059)."""
         state = state.entering(Phase.RESOLUTION)
-        state, _ = resolver(state)  # type: ignore[operator]
+        state, _ = resolver(state)
 
         outcome = evaluate_victory(state)
         if outcome is not None:

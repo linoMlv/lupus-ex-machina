@@ -94,7 +94,26 @@ def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
 
     intent = RandomAgent(rng=create_rng(2)).decide(project(state, lonely))
 
-    assert isinstance(intent, Speak | CastVote | Wait)
+    assert isinstance(intent, Speak)
+    assert not any(player.name in intent.speech for player in state.players), (
+        "there is nobody left to name"
+    )
+
+
+def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() -> None:
+    """A line joins the shared transcript: it is read on screen, and by the models (J7)."""
+    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    speaker = state.living[0]
+
+    intent = RandomAgent(rng=create_rng(1)).decide(project(state, speaker.id))
+
+    assert isinstance(intent, Speak)
+    assert any(other.name in intent.speech for other in state.players if other.id != speaker.id), (
+        "somebody is named"
+    )
+    assert not any(other.id in intent.speech for other in state.players), (
+        "and never by an internal identifier"
+    )
 
 
 def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:

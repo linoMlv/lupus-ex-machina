@@ -83,8 +83,18 @@ class RandomAgent:
         return self._rng.choice((*view.vote_targets, None))
 
     def _improvise(self, view: PlayerView) -> str:
-        """Produce a placeholder line. Real speech arrives with the models (J7)."""
+        """Produce a placeholder line. Real speech arrives with the models (J7).
+
+        Players are named by their name, never by their identifier: a line goes
+        to the shared transcript, which is read on screen and, from J7 on, by the
+        models themselves.
+        """
         others = view.living_others
         if not others:
             return "Je réfléchis."
-        return f"Je me méfie de {self._rng.choice(others)}."
+        return f"Je me méfie de {_name_of(view, self._rng.choice(others))}."
+
+
+def _name_of(view: PlayerView, player: PlayerId) -> str:
+    """Public name of a player, as everyone at the table says it."""
+    return next(other.name for other in view.players if other.id == player)

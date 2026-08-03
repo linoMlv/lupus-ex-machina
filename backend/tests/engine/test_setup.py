@@ -12,6 +12,7 @@ from lupus_ex_machina.engine.roles import RoleName, Team
 from lupus_ex_machina.engine.setup import (
     MAXIMUM_PLAYERS,
     MINIMUM_PLAYERS,
+    WEREWOLVES_BY_PLAYER_COUNT,
     UnsupportedPlayerCountError,
     create_game,
 )
@@ -31,6 +32,16 @@ def test_unsupported_player_counts_are_refused(player_count: int) -> None:
     """Six to eight players in V1, eight being the hard maximum (D-056)."""
     with pytest.raises(UnsupportedPlayerCountError):
         create_game(player_count, rng=create_rng(1))
+
+
+def test_the_supported_range_has_no_hole() -> None:
+    """The bounds are read off the table, and both refusals word themselves as a range.
+
+    The engine says "V1 supports 6 to 8 players" and the console command says the
+    same in French. A count missing from the middle of the table would turn both
+    sentences into a lie, and nothing else would notice.
+    """
+    assert set(WEREWOLVES_BY_PLAYER_COUNT) == set(range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1))
 
 
 def test_players_are_seated_in_order_and_all_alive() -> None:

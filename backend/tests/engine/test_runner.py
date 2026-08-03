@@ -10,15 +10,22 @@ import pytest
 
 from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.intents import CastVote, Intent, RoleAction, RoleActionName, Wait
+from lupus_ex_machina.engine.intents import (
+    CastVote,
+    Intent,
+    RoleAction,
+    RoleActionName,
+    Speak,
+    Wait,
+)
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import GameDidNotEndError, GameResult, play_game
 from lupus_ex_machina.engine.setup import MAXIMUM_PLAYERS, MINIMUM_PLAYERS, create_game
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
+from lupus_ex_machina.engine.victory import evaluate_victory
 from lupus_ex_machina.engine.views import PlayerView
 
 PLAYER_COUNTS = range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1)
@@ -32,38 +39,53 @@ def play(seed: int, *, player_count: int = 8) -> GameResult:
     return play_game(state, agents)
 
 
+def assert_properly_finished(result: GameResult) -> None:
+    """Check a game really ended, rather than merely returning.
+
+    ``result.outcome`` is typed as :class:`Outcome` and validated on
+    construction, so asserting it *is* one proves nothing. What is worth
+    checking is that the reported winner is the one the final state gives, and
+    that the game was closed rather than abandoned mid-round.
+    """
+    assert result.state.phase is Phase.ENDED
+    assert result.rounds >= 1
+    assert evaluate_victory(result.state) is result.outcome
+
+
 # --- A game runs to the end -------------------------------------------------
 
 
 def test_a_full_game_reaches_a_winner() -> None:
-    result = play(seed=1)
-
-    assert result.outcome in tuple(Outcome)
-    assert result.state.phase is Phase.ENDED
-    assert result.rounds >= 1
+    assert_properly_finished(play(seed=1))
 
 
 @pytest.mark.parametrize("player_count", PLAYER_COUNTS)
 def test_every_supported_table_size_can_be_played(player_count: int) -> None:
-    assert play(seed=2, player_count=player_count).outcome in tuple(Outcome)
+    assert_properly_finished(play(seed=2, player_count=player_count))
 
 
 def test_a_hundred_games_of_different_seeds_all_terminate() -> None:
     """The regression net of J2.5.5: no seed may deadlock the engine."""
-    outcomes = [play(seed=seed).outcome for seed in range(100)]
+    results = [play(seed=seed) for seed in range(100)]
 
-    assert len(outcomes) == 100
-    assert all(outcome in tuple(Outcome) for outcome in outcomes)
-    assert len(set(outcomes)) == 2, "both sides must be able to win"
+    for result in results:
+        assert_properly_finished(result)
+    assert len({result.outcome for result in results}) == 2, "both sides must be able to win"
 
 
 def test_a_table_that_always_accuses_ends_quickly() -> None:
+    """Eight players, an elimination most rounds: the game cannot drag on.
+
+    The bound is what makes the name true — without it the round budget of 100
+    would let a stalling regression through unnoticed.
+    """
     state = create_game(8, rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: AlwaysAccuseAgent() for player in state.players}
 
     result = play_game(state, agents)
 
-    assert result.outcome in tuple(Outcome)
+    assert_properly_finished(result)
+    assert result.rounds <= 8
 
 
 def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None:
@@ -162,8 +184,40 @@ def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
 
     result = play_game(state, agents)
 
-    assert result.outcome in tuple(Outcome)
+    assert_properly_finished(result)
     assert result.rejected_intents > 0
+
+
+class TooEagerOnNightZeroAgent:
+    """Takes the floor on Night 0, where nothing but waiting is legal. Sane after."""
+
+    def __init__(self, rng: Rng) -> None:
+        """Take the generator the sane half of this agent draws from."""
+        self._sane = RandomAgent(rng=rng)
+
+    def decide(self, view: PlayerView) -> Intent:
+        """Speak out of turn on Night 0, then play normally."""
+        if view.phase is Phase.NIGHT_ZERO:
+            return Speak(speech="Je prends la parole trop tôt.")
+        return self._sane.decide(view)
+
+
+def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
+    """Night 0 collects an intent from everyone, so it must judge them too (D-032).
+
+    Dropping the illegal ones silently would leave `rejected_intents` — which the
+    console command prints as "intentions refusées par le moteur" — quietly wrong
+    about the one phase where every agent is asked and nothing is allowed.
+    """
+    rng = create_rng(13)
+    state = create_game(6, rng=rng)
+    agents: dict[PlayerId, Agent] = {
+        player.id: TooEagerOnNightZeroAgent(rng) for player in state.players
+    }
+
+    result = play_game(state, agents)
+
+    assert result.rejected_intents >= len(state.players)
 
 
 class NeverVotesAgent:
@@ -184,7 +238,7 @@ def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
 
     result = play_game(state, agents)
 
-    assert result.outcome in tuple(Outcome)
+    assert_properly_finished(result)
 
 
 def test_the_engine_refuses_to_loop_forever() -> None:

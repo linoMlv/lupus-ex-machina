@@ -81,8 +81,20 @@ def test_who_voted_is_public_but_never_for_whom() -> None:
 
     assert view.voters == (WOLF,)
     assert VILLAGER not in view.voters
-    assert "ballots" not in view.model_dump(), "ballots themselves never reach a view"
-    assert all(isinstance(voter, str) for voter in view.voters), "a voter carries no target"
+
+
+def test_the_target_of_a_vote_never_reaches_anyone_elses_view() -> None:
+    """Whom the wolf named is the one thing that differs between these two games.
+
+    Comparing whole projections is what makes this falsifiable: any field that
+    carried the target — under any name — would make the two views differ. Even
+    the accused must not learn that they were named (D-013, GL-3).
+    """
+    against_villager = day().with_ballot_from(WOLF, VILLAGER)
+    against_other = day().with_ballot_from(WOLF, OTHER_VILLAGER)
+
+    for viewer in (VILLAGER, OTHER_VILLAGER, OTHER_WOLF):
+        assert project(against_villager, viewer) == project(against_other, viewer)
 
 
 def test_night_zero_offers_nothing_but_waiting() -> None:

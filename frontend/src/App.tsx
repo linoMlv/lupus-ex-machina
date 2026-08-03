@@ -9,7 +9,7 @@ export default function App() {
     <main className="app">
       <h1>Lupus Ex Machina</h1>
       <p>Simulateur de parties de Loup-Garou jouées par des agents autonomes.</p>
-      <p className="app__status">Fondations en place — le moteur de jeu arrive.</p>
+      <p className="app__status">Moteur de jeu en place — la scène arrive.</p>
     </main>
   )
 }
