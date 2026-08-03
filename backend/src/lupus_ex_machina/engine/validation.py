@@ -101,6 +101,8 @@ def _validate_vote(state: GameState, actor: PlayerId, intent: CastVote) -> None:
 
     if state.day == BOOTSTRAP_DAY:
         raise IllegalIntentError("On the first day, only a blank vote is allowed")
+    if intent.target == actor:
+        raise IllegalIntentError(f"Player {actor} cannot vote for themselves")
     _ensure_alive_target(state, intent.target)
 
 

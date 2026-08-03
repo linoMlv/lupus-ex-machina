@@ -127,6 +127,16 @@ def test_voting_for_an_unknown_player_is_refused() -> None:
         validate_intent(day(), WOLF, CastVote(target=UNKNOWN))
 
 
+def test_voting_for_oneself_is_refused() -> None:
+    """The view never offers the voter to themselves, so the validator must agree.
+
+    A model that names itself would otherwise cast a legal, lethal ballot for a
+    move the rules handed to it say does not exist.
+    """
+    with pytest.raises(IllegalIntentError, match="themselves"):
+        validate_intent(day(), WOLF, CastVote(target=WOLF))
+
+
 def test_voting_for_a_dead_player_is_refused() -> None:
     state = day().with_players_killed([VILLAGER])
 

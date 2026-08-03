@@ -20,7 +20,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import RoleName, Team
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.engine.validation import BOOTSTRAP_DAY
+from lupus_ex_machina.engine.validation import ACTIONABLE_PHASES, BOOTSTRAP_DAY
 
 
 class PublicPlayer(BaseModel):
@@ -94,8 +94,21 @@ def _allies_of(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
     )
 
 
+def _may_act(state: GameState, viewer: PlayerId) -> bool:
+    """Whether the validator would accept anything at all from this player.
+
+    The dead and the phases the engine resolves on its own offer no move. A view
+    is built for them all the same — a dead player keeps watching the game — so
+    it must say so rather than offer moves that would be refused.
+    """
+    return state.is_alive(viewer) and state.phase in ACTIONABLE_PHASES
+
+
 def _allowed_intents(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ...]:
     """List the moves the validator would accept right now."""
+    if not _may_act(state, viewer):
+        return ()
+
     if state.phase is Phase.DAY:
         if state.has_voted(viewer):
             return (IntentKind.WAIT,)
@@ -114,14 +127,22 @@ def _may_hunt(state: GameState, viewer: PlayerId) -> bool:
 
 
 def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
-    """Players this one may name. Empty on Day 1, where only a blank vote is legal (D-032)."""
-    if state.phase is not Phase.DAY or state.day == BOOTSTRAP_DAY or state.has_voted(viewer):
+    """Players this one may name. Empty on Day 1, where only a blank vote is legal (D-032).
+
+    Never oneself: a player cannot vote for their own elimination, which the
+    validator refuses too.
+    """
+    if not _may_act(state, viewer) or state.phase is not Phase.DAY:
+        return ()
+    if state.day == BOOTSTRAP_DAY or state.has_voted(viewer):
         return ()
     return tuple(player.id for player in state.living if player.id != viewer)
 
 
 def _night_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
     """Prey the pack may designate: the living, minus the wolves themselves."""
-    if state.phase is not Phase.NIGHT or not _may_hunt(state, viewer):
+    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
+        return ()
+    if not _may_hunt(state, viewer):
         return ()
     return tuple(player.id for player in state.living if player.team is not Team.WEREWOLVES)
