@@ -1,0 +1,53 @@
+# Keep the build context to what the image actually needs: backend sources,
+# frontend sources, and the GLB models. Everything else is excluded, both to
+# speed up the build and to keep unrelated changes from busting the layer cache.
+
+# --- Version control and internal documentation ---
+.git/
+.gitignore
+.github/
+.local-dev/
+CLAUDE.md
+.claude/
+docs/
+README.md
+LICENSE
+
+# --- Build outputs and environments (rebuilt inside the image) ---
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- Tool caches and reports ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Assets: only the GLB models are served at runtime ---
+assets/**/FBX format/
+assets/**/OBJ format/
+assets/**/Previews/
+assets/**/Isometric/
+assets/*.zip
+
+# --- Secrets, local data and editor noise ---
+.env
+.env.*
+!.env.example
+data/
+logs/
+*.log
+.idea/
+.vscode/
+.DS_Store
+
+# --- Local tooling that has no role inside the image ---
+Makefile
+scripts/
