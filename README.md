@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 et 2 sur 12 terminés.**
+**Jalons 1 à 3 sur 12 terminés.**
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -148,8 +148,13 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   scriptés, **sans le moindre appel à un modèle** : phases, intentions, votes, nuits, conditions de
   victoire. Cent parties de graines différentes se terminent toutes, et deux parties de même graine
   sont strictement identiques.
+- **J3 — Modèle d'information et journal d'événements.** Chaque fait du jeu déclare qui a le droit de
+  le connaître, et une vue n'est qu'un filtre sur ce prédicat : le canal des loups, le rôle de chacun,
+  le contenu d'un bulletin et les pensées privées ne peuvent pas atteindre qui n'y a pas droit —
+  **c'est vérifié sur cent parties**, pas seulement voulu. Le journal est la source de vérité : une
+  partie se rejoue intégralement depuis lui, et survit à l'aller-retour sur disque.
 
-Le modèle d'information et le journal d'événements (jalon 3) sont la prochaine étape.
+Les rôles à pouvoir et la résolution nocturne (jalon 4) sont la prochaine étape.
 
 ---
 
