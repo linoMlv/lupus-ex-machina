@@ -140,9 +140,16 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalon 1 sur 12 terminé** : fondations du dépôt et chaîne de livraison. Le squelette applicatif
-répond, l'interface et les modèles 3D sont servis, et l'image Docker se construit et se vérifie
-d'une seule commande. Le moteur de jeu (jalon 2) est la prochaine étape.
+**Jalons 1 et 2 sur 12 terminés.**
+
+- **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
+  l'image Docker se construit et se vérifie d'une seule commande.
+- **J2 — Noyau de jeu déterministe.** Une partie complète se joue de bout en bout avec des agents
+  scriptés, **sans le moindre appel à un modèle** : phases, intentions, votes, nuits, conditions de
+  victoire. Cent parties de graines différentes se terminent toutes, et deux parties de même graine
+  sont strictement identiques.
+
+Le modèle d'information et le journal d'événements (jalon 3) sont la prochaine étape.
 
 ---
 
@@ -154,6 +161,14 @@ d'une seule commande. Le moteur de jeu (jalon 2) est la prochaine étape.
 make install         # dépendances backend et frontend
 make test            # suite de tests backend, avec couverture
 make lint            # ruff, mypy strict, oxlint, prettier, tsc
+```
+
+Pour voir une partie se dérouler en console, jouée par des agents scriptés — aucune clé d'API n'est
+nécessaire :
+
+```bash
+make play                      # 8 joueurs, graine 1
+make play SEED=7 PLAYERS=6     # partie reproductible à volonté
 ```
 
 Pour développer, deux processus : l'API d'un côté, Vite de l'autre — le serveur de développement

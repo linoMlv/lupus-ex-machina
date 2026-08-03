@@ -12,9 +12,13 @@ NPM          := npm --prefix $(FRONTEND)
 IMAGE        := lupus-ex-machina
 CONTAINER    := lupus-ex-machina-check
 
+# Defaults of the `play` target, overridable: make play SEED=7 PLAYERS=6
+SEED         ?= 1
+PLAYERS      ?= 8
+
 .DEFAULT_GOAL := help
 .PHONY: help install test test-backend lint lint-backend lint-frontend format \
-        typecheck run run-frontend build build-frontend build-image check-image clean
+        typecheck run run-frontend play build build-frontend build-image check-image clean
 
 help: ## List the available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -60,6 +64,9 @@ run: ## Serve the API and the built frontend on APP_PORT (default 8000)
 
 run-frontend: ## Start the Vite dev server with hot reload
 	$(NPM) run dev
+
+play: ## Play one game in the console with scripted agents (SEED=1 PLAYERS=8)
+	$(UV) run lupus-play --seed $(SEED) --players $(PLAYERS)
 
 # --- Build -------------------------------------------------------------------
 

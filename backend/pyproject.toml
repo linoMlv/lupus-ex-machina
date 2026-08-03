@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 lupus-ex-machina = "lupus_ex_machina.server:main"
+lupus-play = "lupus_ex_machina.play:main"
 
 [dependency-groups]
 dev = [
@@ -58,6 +59,7 @@ show_missing = true
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
+    "^\\s*\\.\\.\\.$",  # a Protocol body carries no behaviour
 ]
 
 # --- Lint and format ---------------------------------------------------------
