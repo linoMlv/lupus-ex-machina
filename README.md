@@ -32,6 +32,7 @@
 - [Rôles et configuration](#rôles-et-configuration)
 - [Direction artistique](#direction-artistique)
 - [État du projet](#état-du-projet)
+- [Démarrage](#démarrage)
 - [Stack technique](#stack-technique)
 - [Origine du projet](#origine-du-projet)
 - [Crédits](#crédits)
@@ -139,7 +140,45 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Le dépôt ne contient pour l'instant que les assets 3D.** Le code arrive.
+**Jalon 1 sur 12 terminé** : fondations du dépôt et chaîne de livraison. Le squelette applicatif
+répond, l'interface et les modèles 3D sont servis, et l'image Docker se construit et se vérifie
+d'une seule commande. Le moteur de jeu (jalon 2) est la prochaine étape.
+
+---
+
+## Démarrage
+
+**Prérequis** : [uv](https://docs.astral.sh/uv/), Node 22 ou plus, et Docker pour l'image.
+
+```bash
+make install         # dépendances backend et frontend
+make test            # suite de tests backend, avec couverture
+make lint            # ruff, mypy strict, oxlint, prettier, tsc
+```
+
+Pour développer, deux processus : l'API d'un côté, Vite de l'autre — le serveur de développement
+relaie vers l'API les chemins qui lui appartiennent.
+
+```bash
+make run             # API sur http://127.0.0.1:8000
+make run-frontend    # interface sur http://127.0.0.1:5173, avec rechargement à chaud
+```
+
+Pour servir l'ensemble depuis un seul processus, comme en production :
+
+```bash
+make build-frontend  # compile l'interface dans frontend/dist
+make run             # http://127.0.0.1:8000 sert l'API, l'interface et les modèles
+```
+
+Et pour l'image de production :
+
+```bash
+make check-image     # construit l'image, la démarre et vérifie qu'elle sert tout
+```
+
+`make help` liste toutes les cibles. Le déploiement est documenté dans
+[`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ---
 
