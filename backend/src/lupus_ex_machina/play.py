@@ -14,16 +14,16 @@ from collections.abc import Sequence
 
 from lupus_ex_machina.agents.scripted import RandomAgent
 from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.composition import (
+    MAXIMUM_PLAYERS,
+    MINIMUM_PLAYERS,
+    UnsupportedPlayerCountError,
+)
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import GameResult, play_game
-from lupus_ex_machina.engine.setup import (
-    MAXIMUM_PLAYERS,
-    MINIMUM_PLAYERS,
-    UnsupportedPlayerCountError,
-    create_game,
-)
+from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 
@@ -34,6 +34,9 @@ from lupus_ex_machina.engine.victory import Outcome
 ROLE_LABELS: dict[RoleName, str] = {
     RoleName.VILLAGER: "villageois",
     RoleName.WEREWOLF: "loup-garou",
+    RoleName.SEER: "voyante",
+    RoleName.WITCH: "sorcière",
+    RoleName.HUNTER: "chasseur",
 }
 OUTCOME_LABELS: dict[Outcome, str] = {
     Outcome.VILLAGE_WINS: "Victoire du village",

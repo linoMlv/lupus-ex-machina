@@ -14,13 +14,12 @@ from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
     RoleAction,
-    RoleActionName,
     Speak,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 
@@ -170,7 +169,8 @@ def test_a_player_who_voted_may_still_wait() -> None:
 
 
 def test_only_a_wolf_may_devour() -> None:
-    with pytest.raises(IllegalIntentError, match="werewolf"):
+    """Refused because the villager's entry does not declare the action (D-010)."""
+    with pytest.raises(IllegalIntentError, match="villager cannot devour"):
         validate_intent(night(), VILLAGER, DEVOUR_VILLAGER)
 
 
@@ -220,3 +220,63 @@ def test_validation_never_changes_the_state(intent: Intent) -> None:
         validate_intent(state, WOLF, intent)
 
     assert state.model_dump() == before
+
+
+# --- A role may only play what its entry in the registry declares -------------
+
+#: Every pairing of a role with an action that is not its own.
+FOREIGN_ACTIONS = [
+    (role, action)
+    for role in RoleName
+    for action in RoleActionName
+    if action not in ROLES[role].actions
+]
+
+#: Actions whose rules land with the role that owns them, later in this jalon.
+#: The engine refuses what it cannot resolve rather than letting it through.
+UNRESOLVED_ACTIONS = [
+    RoleActionName.INSPECT,
+    RoleActionName.HEAL,
+    RoleActionName.POISON,
+    RoleActionName.SHOOT,
+]
+
+
+def a_table_of(role: RoleName) -> GameState:
+    """A night where the first seat holds that role, with prey to aim at."""
+    return (
+        GameState.initial(
+            (
+                Player(id=WOLF, name="Alice", seat=0, role=role),
+                Player(id=OTHER_WOLF, name="Bruno", seat=1, role=RoleName.WEREWOLF),
+                Player(id=VILLAGER, name="Camille", seat=2, role=RoleName.VILLAGER),
+                Player(id=OTHER_VILLAGER, name="Dounia", seat=3, role=RoleName.VILLAGER),
+            )
+        )
+        .entering(Phase.DAY, day=1)
+        .entering(Phase.RESOLUTION)
+        .entering(Phase.NIGHT)
+    )
+
+
+@pytest.mark.parametrize(("role", "action"), FOREIGN_ACTIONS)
+def test_a_role_cannot_play_an_action_that_is_not_its_own(
+    role: RoleName, action: RoleActionName
+) -> None:
+    """The registry is what the validator reads, so the two cannot disagree (D-010)."""
+    with pytest.raises(IllegalIntentError):
+        validate_intent(a_table_of(role), WOLF, RoleAction(action=action, target=VILLAGER))
+
+
+@pytest.mark.parametrize("action", UNRESOLVED_ACTIONS)
+def test_an_action_the_engine_cannot_resolve_yet_is_refused(action: RoleActionName) -> None:
+    """Even played by the role that owns it, until that role is implemented.
+
+    Accepting an intent whose effect nothing applies would leave an agent
+    believing it acted. Each line of ``UNRESOLVED_ACTIONS`` disappears as its
+    role lands.
+    """
+    owner = next(role for role in RoleName if action in ROLES[role].actions)
+
+    with pytest.raises(IllegalIntentError, match="not resolve"):
+        validate_intent(a_table_of(owner), WOLF, RoleAction(action=action, target=VILLAGER))

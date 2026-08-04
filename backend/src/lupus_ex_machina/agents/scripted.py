@@ -14,12 +14,12 @@ from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
     RoleAction,
-    RoleActionName,
     Speak,
     Wait,
 )
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import Rng
+from lupus_ex_machina.engine.roles import RoleActionName
 from lupus_ex_machina.engine.views import PlayerView
 
 

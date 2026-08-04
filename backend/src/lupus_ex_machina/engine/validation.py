@@ -17,13 +17,12 @@ from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
     RoleAction,
-    RoleActionName,
     Speak,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.roles import Team
+from lupus_ex_machina.engine.roles import ROLES, RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState
 
 # Day 1 is a bootstrap round: the debate opens with nothing to go on, so nobody
@@ -112,17 +111,36 @@ def _validate_vote(state: GameState, actor: PlayerId, intent: CastVote) -> None:
 def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction) -> None:
     if state.phase is not Phase.NIGHT:
         raise IllegalIntentError("Role actions are only allowed at night")
+    _ensure_the_role_owns_the_action(state, actor, intent.action)
 
     match intent.action:
         case RoleActionName.DEVOUR:
             _validate_devouring(state, actor, intent.target)
+        case RoleActionName.INSPECT | RoleActionName.HEAL | RoleActionName.POISON:
+            # The rules of the powered roles land with the roles themselves
+            # (J4.4 to J4.6). Refusing what nothing would apply keeps an agent
+            # from believing it acted.
+            raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
+        case RoleActionName.SHOOT:
+            raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
         case _:  # pragma: no cover - the enum is closed, mypy proves this is dead
             assert_never(intent.action)
 
 
+def _ensure_the_role_owns_the_action(
+    state: GameState, actor: PlayerId, action: RoleActionName
+) -> None:
+    """A role may only play what its entry in the registry declares (D-010).
+
+    Read from the registry rather than restated here, so the declaration and the
+    rule that enforces it cannot drift apart.
+    """
+    role = ROLES[state.player(actor).role]
+    if action not in role.actions:
+        raise IllegalIntentError(f"A {role.name} cannot {action}")
+
+
 def _validate_devouring(state: GameState, actor: PlayerId, target: PlayerId) -> None:
-    if state.player(actor).team is not Team.WEREWOLVES:
-        raise IllegalIntentError(f"Player {actor} is not a werewolf and cannot devour")
     if state.has_chosen_a_night_target(actor):
         raise IllegalIntentError(f"Player {actor} has already designated a target tonight")
 

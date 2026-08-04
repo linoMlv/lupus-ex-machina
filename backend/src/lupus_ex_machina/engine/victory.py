@@ -25,17 +25,28 @@ class Outcome(StrEnum):
     WEREWOLVES_WIN = "werewolves_win"
 
 
-def evaluate_victory(state: GameState) -> Outcome | None:
-    """Return the winning side, or ``None`` while the game is still running."""
-    wolves = len(state.living_of_team(Team.WEREWOLVES))
-    if wolves == 0:
+def decide(*, werewolves: int, villagers: int) -> Outcome | None:
+    """Return the winning side for a table of that shape, or ``None`` if it plays on.
+
+    Kept apart from the state so the rule has a single home: the end of a game
+    and the acceptance of a starting composition (D-061) are the same question
+    asked at two moments, and two copies of it would drift.
+    """
+    if werewolves == 0:
         return Outcome.VILLAGE_WINS
 
-    villagers = len(state.living_of_team(Team.VILLAGE))
-    if wolves > villagers:
+    if werewolves > villagers:
         return Outcome.WEREWOLVES_WIN
 
-    if wolves == villagers and wolves + villagers == PARITY_ENDGAME_SIZE:
+    if werewolves == villagers and werewolves + villagers == PARITY_ENDGAME_SIZE:
         return Outcome.WEREWOLVES_WIN
 
     return None
+
+
+def evaluate_victory(state: GameState) -> Outcome | None:
+    """Return the winning side, or ``None`` while the game is still running."""
+    return decide(
+        werewolves=len(state.living_of_team(Team.WEREWOLVES)),
+        villagers=len(state.living_of_team(Team.VILLAGE)),
+    )

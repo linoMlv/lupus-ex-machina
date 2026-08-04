@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.roles import RoleActionName
 
 
 class IntentKind(StrEnum):
@@ -24,15 +25,6 @@ class IntentKind(StrEnum):
     VOTE = "vote"
     WAIT = "wait"
     ROLE_ACTION = "role_action"
-
-
-class RoleActionName(StrEnum):
-    """Night actions a role can perform.
-
-    Only the werewolves act at night in J2; the powered roles arrive in J4.
-    """
-
-    DEVOUR = "devour"
 
 
 class _BaseIntent(BaseModel):

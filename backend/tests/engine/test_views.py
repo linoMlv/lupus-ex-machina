@@ -11,13 +11,12 @@ from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
     RoleAction,
-    RoleActionName,
     Speak,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.roles import RoleActionName, RoleName
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project

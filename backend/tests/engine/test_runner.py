@@ -15,6 +15,7 @@ from lupus_ex_machina.agents.scripted import (
     SilentAgent,
 )
 from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.composition import MAXIMUM_PLAYERS, MINIMUM_PLAYERS
 from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
@@ -26,7 +27,7 @@ from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import GameDidNotEndError, GameResult, play_game
-from lupus_ex_machina.engine.setup import MAXIMUM_PLAYERS, MINIMUM_PLAYERS, create_game
+from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import evaluate_victory
 from lupus_ex_machina.engine.views import PlayerView

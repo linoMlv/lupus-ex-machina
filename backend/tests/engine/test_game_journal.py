@@ -32,7 +32,7 @@ from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.engine.rng import create_rng
-from lupus_ex_machina.engine.roles import RoleName, Team
+from lupus_ex_machina.engine.roles import Team, team_of
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 
@@ -192,14 +192,18 @@ def test_by_default_a_death_reveals_nothing() -> None:
     assert InformationPolicy().reveal_role_on_death is False
 
 
-def test_a_revelation_is_recorded_for_a_villager_too() -> None:
-    """Guard against a revelation that would only ever fire for one team."""
-    revealed_roles = {
-        revelation.role
+def test_a_revelation_is_recorded_whichever_side_the_dead_belonged_to() -> None:
+    """Guard against a revelation that would only ever fire for one team.
+
+    Stated in teams rather than in role names: what matters is that neither side
+    is silently spared the announcement, and the roster of roles grows.
+    """
+    revealed_teams = {
+        team_of(revelation.role)
         for seed in (1, 2, 3, 4)
         for revelation in facts_of(
             play(seed, policy=InformationPolicy(reveal_role_on_death=True)), RoleRevealed
         )
     }
 
-    assert revealed_roles == {RoleName.VILLAGER, RoleName.WEREWOLF}
+    assert revealed_teams == {Team.VILLAGE, Team.WEREWOLVES}

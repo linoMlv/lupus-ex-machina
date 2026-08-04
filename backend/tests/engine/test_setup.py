@@ -1,47 +1,62 @@
-"""Building the initial state of a game.
+"""Dealing a game.
 
-Compositions follow D-056: one wolf at six players, two at seven and eight.
-The powered roles (seer, witch, hunter) join the composition in J4; here every
-non-wolf is a villager.
+The table itself is decided elsewhere (see the composition tests); what is
+checked here is the deal: every role of the composition reaches exactly one
+seat, names are drawn without replacement, and the whole thing comes from the
+seed and nothing else.
 """
+
+from collections import Counter
 
 import pytest
 
-from lupus_ex_machina.engine.rng import create_rng
-from lupus_ex_machina.engine.roles import RoleName, Team
-from lupus_ex_machina.engine.setup import (
+from lupus_ex_machina.engine.composition import (
     MAXIMUM_PLAYERS,
     MINIMUM_PLAYERS,
-    WEREWOLVES_BY_PLAYER_COUNT,
+    Composition,
     UnsupportedPlayerCountError,
-    create_game,
+    default_composition,
 )
+from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.setup import create_game
+
+TABLE_SIZES = range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1)
 
 
-@pytest.mark.parametrize(("player_count", "wolves"), [(6, 1), (7, 2), (8, 2)])
-def test_compositions_follow_the_decided_table(player_count: int, wolves: int) -> None:
+@pytest.mark.parametrize("player_count", TABLE_SIZES)
+def test_a_deal_hands_out_exactly_the_composition(player_count: int) -> None:
     state = create_game(player_count, rng=create_rng(1))
 
-    assert len(state.players) == player_count
-    assert len(state.living_of_team(Team.WEREWOLVES)) == wolves
-    assert len(state.living_of_team(Team.VILLAGE)) == player_count - wolves
+    assert Counter(player.role for player in state.players) == Counter(
+        default_composition(player_count).roles
+    )
+
+
+@pytest.mark.parametrize("player_count", TABLE_SIZES)
+def test_every_supported_table_deals_all_five_roles(player_count: int) -> None:
+    """The powered roles are not an option of the default game (D-056)."""
+    dealt = {player.role for player in create_game(player_count, rng=create_rng(1)).players}
+
+    assert dealt == set(RoleName)
+
+
+def test_a_game_can_be_dealt_from_a_composition_of_ones_own() -> None:
+    """D-061: the owner may deal their own table, and it is dealt as given."""
+    composition = Composition(
+        roles=(RoleName.WEREWOLF, RoleName.WEREWOLF, RoleName.HUNTER) + (RoleName.VILLAGER,) * 3
+    )
+
+    state = create_game(composition, rng=create_rng(1))
+
+    assert Counter(player.role for player in state.players) == Counter(composition.roles)
+    assert len(state.players) == 6
 
 
 @pytest.mark.parametrize("player_count", [0, 1, MINIMUM_PLAYERS - 1, MAXIMUM_PLAYERS + 1, 20])
 def test_unsupported_player_counts_are_refused(player_count: int) -> None:
-    """Six to eight players in V1, eight being the hard maximum (D-056)."""
     with pytest.raises(UnsupportedPlayerCountError):
         create_game(player_count, rng=create_rng(1))
-
-
-def test_the_supported_range_has_no_hole() -> None:
-    """The bounds are read off the table, and both refusals word themselves as a range.
-
-    The engine says "V1 supports 6 to 8 players" and the console command says the
-    same in French. A count missing from the middle of the table would turn both
-    sentences into a lie, and nothing else would notice.
-    """
-    assert set(WEREWOLVES_BY_PLAYER_COUNT) == set(range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1))
 
 
 def test_players_are_seated_in_order_and_all_alive() -> None:
