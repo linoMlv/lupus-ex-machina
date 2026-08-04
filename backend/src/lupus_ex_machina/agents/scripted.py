@@ -47,6 +47,8 @@ class AlwaysAccuseAgent:
 
     def decide(self, view: PlayerView) -> Intent:
         """Put everything on the first prey, or vote against the first target."""
+        if IntentKind.ROLE_ACTION in view.allowed_intents and view.night_targets:
+            return RoleAction(action=view.night_actions[0], target=view.night_targets[0])
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.night_targets:
             return SharePriority(
                 allocations=(
@@ -94,6 +96,11 @@ class RandomAgent:
                 return CastVote(target=self._maybe_target(view))
             case IntentKind.SHARE_PRIORITY:
                 return self._spread(view)
+            case IntentKind.ROLE_ACTION:
+                return RoleAction(
+                    action=self._rng.choice(view.night_actions),
+                    target=self._rng.choice(view.night_targets),
+                )
             case _:
                 return Wait()
 

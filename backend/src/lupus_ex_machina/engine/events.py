@@ -24,9 +24,10 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from lupus_ex_machina.engine.intents import PriorityPoint
+from lupus_ex_machina.engine.night import Revelation
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.roles import RoleActionName, RoleName
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.engine.visibility import Recipient, Visibility
 
@@ -41,6 +42,9 @@ class EventKind(StrEnum):
     SPEECH_DELIVERED = "speech_delivered"
     BALLOT_CAST = "ballot_cast"
     BALLOT_ANNOUNCED = "ballot_announced"
+    NIGHT_POWER_USED = "night_power_used"
+    SEER_INSPECTED = "seer_inspected"
+    SEER_FINDING_ANNOUNCED = "seer_finding_announced"
     PRIORITY_SHARED = "priority_shared"
     PACK_SPEECH_DELIVERED = "pack_speech_delivered"
     RUNOFF_OPENED = "runoff_opened"
@@ -169,6 +173,55 @@ class BallotAnnounced(Fact):
     @property
     def audience(self) -> Visibility:
         """Public: the pressure of the end of a round rests on it."""
+        return Visibility.public()
+
+
+class NightPowerUsed(Fact):
+    """A player used a single-target power on someone during the night.
+
+    What they did, not what it came to: the effect is settled with the rest of
+    the night (D-006), and what a seer learns is a fact of its own.
+    """
+
+    kind: Literal[EventKind.NIGHT_POWER_USED] = EventKind.NIGHT_POWER_USED
+    actor: PlayerId
+    action: RoleActionName
+    target: PlayerId
+
+    @property
+    def audience(self) -> Visibility:
+        """Its author: a power used in the dark is nobody else's business."""
+        return Visibility.for_player(self.actor)
+
+
+class SeerInspected(Fact):
+    """What the seer read on the player she looked at (D-031)."""
+
+    kind: Literal[EventKind.SEER_INSPECTED] = EventKind.SEER_INSPECTED
+    seer: PlayerId
+    target: PlayerId
+    revelation: Revelation
+
+    @property
+    def audience(self) -> Visibility:
+        """Hers alone, and the spectator's."""
+        return Visibility.for_player(self.seer)
+
+
+class SeerFindingAnnounced(Fact):
+    """The table is told what the seer found, never on whom (D-031).
+
+    A fact of its own rather than the private one with a wider audience: the
+    name of the player she looked at must not travel with it, and the only way
+    to be sure of that is for it not to be there.
+    """
+
+    kind: Literal[EventKind.SEER_FINDING_ANNOUNCED] = EventKind.SEER_FINDING_ANNOUNCED
+    revelation: Revelation
+
+    @property
+    def audience(self) -> Visibility:
+        """Public, which is the whole point of the option."""
         return Visibility.public()
 
 
@@ -331,6 +384,9 @@ EventPayload = Annotated[
     | SpeechDelivered
     | BallotCast
     | BallotAnnounced
+    | NightPowerUsed
+    | SeerInspected
+    | SeerFindingAnnounced
     | PriorityShared
     | PackSpeechDelivered
     | RunoffOpened

@@ -310,7 +310,6 @@ FOREIGN_ACTIONS = [
 #: Actions whose rules land with the role that owns them, later in this jalon.
 #: The engine refuses what it cannot resolve rather than letting it through.
 UNRESOLVED_ACTIONS = [
-    RoleActionName.INSPECT,
     RoleActionName.HEAL,
     RoleActionName.POISON,
     RoleActionName.SHOOT,

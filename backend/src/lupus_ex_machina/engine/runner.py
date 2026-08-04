@@ -32,6 +32,7 @@ from lupus_ex_machina.engine.events import (
     EventPayload,
     GameEnded,
     IntentRejected,
+    NightPowerUsed,
     NightResolved,
     PackRevealed,
     PackSpeechDelivered,
@@ -41,6 +42,8 @@ from lupus_ex_machina.engine.events import (
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
+    SeerFindingAnnounced,
+    SeerInspected,
     SpeechDelivered,
     VoteResolved,
 )
@@ -53,7 +56,7 @@ from lupus_ex_machina.engine.intents import (
     Wait,
 )
 from lupus_ex_machina.engine.journal import Journal
-from lupus_ex_machina.engine.night import night_callers, resolve_night, tied_prey
+from lupus_ex_machina.engine.night import findings_of, night_callers, resolve_night, tied_prey
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
@@ -201,7 +204,20 @@ class _Run:
         if tied:
             state = self._hold_a_runoff(state, tied)
 
+        self._hand_out_what_the_seers_read(state)
         return self._resolve(state, self._resolve_the_night, _night_outcome)
+
+    def _hand_out_what_the_seers_read(self, state: GameState) -> None:
+        """Tell each seer what she read, and the table if she speaks (D-031)."""
+        for finding in findings_of(state, policy=self._policy):
+            self._journal.record(
+                SeerInspected(
+                    seer=finding.seer, target=finding.target, revelation=finding.revelation
+                ),
+                at=state,
+            )
+            if self._policy.speaking_seer:
+                self._journal.record(SeerFindingAnnounced(revelation=finding.revelation), at=state)
 
     def _collect_night_intents(self, state: GameState) -> GameState:
         """Ask everyone the night wakes, in the order their role is called (D-006).
@@ -304,12 +320,17 @@ class _Run:
             case Speak():
                 self._journal.record(self._speech_of(state, actor, intent.speech), at=state)
                 return state
-            case RoleAction() | Wait():
+            case RoleAction():
+                state = state.with_night_choice_from(actor, intent.action, intent.target)
+                self._journal.record(
+                    NightPowerUsed(actor=actor, action=intent.action, target=intent.target),
+                    at=state,
+                )
+                return state
+            case Wait():
                 # Silence leaves the state untouched, and says nothing anyone
-                # could act on while the floor still goes round the table; it
-                # becomes a fact worth recording when the bidding does (J5). No
-                # role action reaches here either: the validator refuses every
-                # one of them until the powered roles land (J4.4 to J4.6).
+                # could act on while the floor still goes round the table. It
+                # becomes a fact worth recording when the bidding does (J5).
                 return state
             case _:  # pragma: no cover - the union is closed, mypy proves this is dead
                 assert_never(intent)

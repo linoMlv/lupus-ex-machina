@@ -25,6 +25,20 @@ class InformationPolicy(BaseModel):
     a pack that ties or names nobody has the choice made for it.
     """
 
+    seer_learns_exact_role: bool = True
+    """Whether the seer reads the role itself, or only "wolf or not" (D-031).
+
+    The two make very different games, and neither is the obvious default; the
+    richer one is taken, since the poorer is a deliberate handicap.
+    """
+
+    speaking_seer: bool = False
+    """Whether the table hears what the seer found, without whom she looked at.
+
+    Off by default: it hands the village a great deal, and the option exists to
+    be turned on knowingly (D-031).
+    """
+
     reveal_role_on_death: bool = False
     """Whether the role of a player who just died is announced (D-072).
 

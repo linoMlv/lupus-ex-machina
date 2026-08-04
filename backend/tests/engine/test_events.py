@@ -23,6 +23,7 @@ from lupus_ex_machina.engine.events import (
     Fact,
     GameEnded,
     IntentRejected,
+    NightPowerUsed,
     NightResolved,
     NotebookEntryRecorded,
     PackRevealed,
@@ -34,13 +35,16 @@ from lupus_ex_machina.engine.events import (
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
+    SeerFindingAnnounced,
+    SeerInspected,
     SpeechDelivered,
     VoteResolved,
 )
 from lupus_ex_machina.engine.intents import PriorityPoint
+from lupus_ex_machina.engine.night import Revelation
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.roles import RoleActionName, RoleName
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.engine.visibility import SPECTATOR, Recipient, Visibility
 
@@ -52,6 +56,9 @@ WHEN = datetime(2026, 8, 3, 21, 0, tzinfo=UTC)
 PACK = Visibility.for_role(RoleName.WEREWOLF)
 
 A_FEW_POINTS = PriorityPoint(target=VILLAGER, points=60)
+A_FINDING = Revelation(role=RoleName.WEREWOLF)
+
+SEER = PlayerId("p4")
 
 
 #: Every fact the engine can produce, next to the audience it is addressed to.
@@ -66,6 +73,15 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
     (BallotCast(voter=WOLF, target=VILLAGER), Visibility.for_player(WOLF)),
     (BallotCast(voter=WOLF, target=None), Visibility.public()),
     (BallotAnnounced(voter=WOLF), Visibility.public()),
+    (
+        NightPowerUsed(actor=SEER, action=RoleActionName.INSPECT, target=WOLF),
+        Visibility.for_player(SEER),
+    ),
+    (
+        SeerInspected(seer=SEER, target=WOLF, revelation=A_FINDING),
+        Visibility.for_player(SEER),
+    ),
+    (SeerFindingAnnounced(revelation=A_FINDING), Visibility.public()),
     (PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)), PACK),
     (PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."), PACK),
     (RunoffOpened(targets=(VILLAGER,)), PACK),

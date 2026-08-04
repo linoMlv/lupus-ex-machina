@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.phases import Phase, ensure_transition_allowed
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.roles import Team
+from lupus_ex_machina.engine.roles import RoleActionName, Team
 
 
 class Ballot(BaseModel):
@@ -25,6 +25,21 @@ class Ballot(BaseModel):
 
     voter: PlayerId
     target: PlayerId | None = None
+
+
+class NightChoice(BaseModel):
+    """A power a player used on someone during the night.
+
+    The action travels with the target because the night holds several of them
+    at once (D-006): they are collected as they are played and settled together
+    at the end, so each one has to say what it was.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    actor: PlayerId
+    action: RoleActionName
+    target: PlayerId
 
 
 class PriorityShare(BaseModel):
@@ -45,6 +60,7 @@ class GameState(BaseModel):
     phase: Phase
     day: int = Field(ge=0)
     ballots: tuple[Ballot, ...] = ()
+    night_choices: tuple[NightChoice, ...] = ()
     priority_shares: tuple[PriorityShare, ...] = ()
     runoff_targets: tuple[PlayerId, ...] = ()
     """Whom a silent second round is restricted to, empty outside one (D-062).
@@ -96,7 +112,9 @@ class GameState(BaseModel):
         pack's weighted spread. The witch's "one potion per turn" (D-029) falls
         out of this rather than being restated.
         """
-        return any(share.actor == player_id for share in self.priority_shares)
+        return any(choice.actor == player_id for choice in self.night_choices) or any(
+            share.actor == player_id for share in self.priority_shares
+        )
 
     # --- Transitions -----------------------------------------------------
 
@@ -109,6 +127,13 @@ class GameState(BaseModel):
         """Return the state with one more ballot recorded."""
         ballot = Ballot(voter=voter, target=target)
         return self.model_copy(update={"ballots": (*self.ballots, ballot)})
+
+    def with_night_choice_from(
+        self, actor: PlayerId, action: RoleActionName, target: PlayerId
+    ) -> "GameState":
+        """Return the state with one more single-target night power recorded."""
+        choice = NightChoice(actor=actor, action=action, target=target)
+        return self.model_copy(update={"night_choices": (*self.night_choices, choice)})
 
     def with_priority_share_from(
         self, actor: PlayerId, allocations: tuple[PriorityPoint, ...]
@@ -145,6 +170,7 @@ class GameState(BaseModel):
         return self.model_copy(
             update={
                 "ballots": (),
+                "night_choices": (),
                 "priority_shares": (),
                 "runoff_targets": (),
             }

@@ -19,9 +19,13 @@ from lupus_ex_machina.engine.intents import PRIORITY_BUDGET, IntentKind
 from lupus_ex_machina.engine.night import prey_of
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.roles import RoleName, Team
+from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import ACTIONABLE_PHASES, BOOTSTRAP_DAY
+
+#: Single-target powers the engine can settle today. Each entry disappears from
+#: this list by being implemented, not by being removed from a role (J4.5, J4.6).
+RESOLVED_NIGHT_ACTIONS = frozenset({RoleActionName.INSPECT})
 
 
 class PublicPlayer(BaseModel):
@@ -55,6 +59,8 @@ class PlayerView(BaseModel):
     allowed_intents: tuple[IntentKind, ...] = ()
     vote_targets: tuple[PlayerId, ...] = ()
     night_targets: tuple[PlayerId, ...] = ()
+    night_actions: tuple[RoleActionName, ...] = ()
+    """Powers this player may use tonight, empty when they have none left."""
     priority_budget: int = 0
     """Points this player may spread over the prey tonight, zero when they may not."""
 
@@ -83,6 +89,7 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         allowed_intents=_allowed_intents(state, viewer),
         vote_targets=_vote_targets(state, viewer),
         night_targets=_night_targets(state, viewer),
+        night_actions=_night_actions(state, viewer),
         priority_budget=PRIORITY_BUDGET if _may_designate(state, viewer) else 0,
     )
 
@@ -118,14 +125,39 @@ def _allowed_intents(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ..
             return (IntentKind.WAIT,)
         return (IntentKind.SPEAK, IntentKind.VOTE, IntentKind.WAIT)
 
-    if state.phase is Phase.NIGHT and state.player(viewer).team is Team.WEREWOLVES:
+    if state.phase is Phase.NIGHT:
+        return _allowed_at_night(state, viewer)
+
+    return (IntentKind.WAIT,)
+
+
+def _allowed_at_night(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ...]:
+    """The pack has a floor and a vote; the other powers have a single move."""
+    if state.player(viewer).team is Team.WEREWOLVES:
         # The pack keeps its own floor all night (D-007), and may spread its
         # points once (D-008).
         if _may_designate(state, viewer):
             return (IntentKind.SPEAK, IntentKind.SHARE_PRIORITY, IntentKind.WAIT)
         return (IntentKind.SPEAK, IntentKind.WAIT)
 
+    if _night_actions(state, viewer):
+        return (IntentKind.ROLE_ACTION, IntentKind.WAIT)
     return (IntentKind.WAIT,)
+
+
+def _night_actions(state: GameState, viewer: PlayerId) -> tuple[RoleActionName, ...]:
+    """Single-target powers this player may still use tonight.
+
+    Read off the registry, so a role gains its move by being declared rather
+    than by being added to a list here as well (D-010).
+    """
+    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
+        return ()
+    if state.has_acted_tonight(viewer):
+        return ()
+
+    role = ROLES[state.player(viewer).role]
+    return tuple(sorted(role.actions & RESOLVED_NIGHT_ACTIONS))
 
 
 def _may_designate(state: GameState, viewer: PlayerId) -> bool:
@@ -152,11 +184,14 @@ def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
 
 
 def _night_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
-    """Prey the pack may weigh tonight.
+    """Whom this player may aim at tonight.
 
-    Read from the same place the validator reads it, so the offer and the
-    acceptance cannot describe different tables.
+    The pack reads its prey from the same place the validator reads it, so the
+    offer and the acceptance cannot describe different tables. A seer may read
+    anyone still alive but herself.
     """
-    if not _may_designate(state, viewer):
-        return ()
-    return tuple(player.id for player in prey_of(state))
+    if _may_designate(state, viewer):
+        return tuple(player.id for player in prey_of(state))
+    if _night_actions(state, viewer):
+        return tuple(player.id for player in state.living if player.id != viewer)
+    return ()

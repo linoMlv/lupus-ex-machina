@@ -13,10 +13,12 @@ a night without a victim is a normal outcome of the rules, not a failure to
 handle (D-078).
 """
 
+from pydantic import BaseModel, ConfigDict
+
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.priority import tally
-from lupus_ex_machina.engine.roles import ROLES, Team
+from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 
 
@@ -91,3 +93,55 @@ def resolve_night(
     victim = designated_prey(state, policy=policy)
     killed = state if victim is None else state.with_players_killed([victim])
     return killed.cleared_of_round_choices(), victim
+
+
+class Revelation(BaseModel):
+    """What a seer is told about the player she looked at (D-031).
+
+    Exactly one of the two is filled in, decided by the configuration: either
+    the role itself, or the single bit that matters to the village. Modelling
+    both as optional and validating the pair keeps the two settings one type,
+    which is what the announcement and the private finding both carry.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    role: RoleName | None = None
+    is_werewolf: bool | None = None
+
+    @classmethod
+    def of(cls, role: RoleName, *, in_full: bool) -> "Revelation":
+        """Read a role the way the configuration says the seer reads it."""
+        if in_full:
+            return cls(role=role)
+        return cls(is_werewolf=ROLES[role].team is Team.WEREWOLVES)
+
+
+class Finding(BaseModel):
+    """What one seer learned tonight, and about whom."""
+
+    model_config = ConfigDict(frozen=True)
+
+    seer: PlayerId
+    target: PlayerId
+    revelation: Revelation
+
+
+def findings_of(state: GameState, *, policy: InformationPolicy) -> tuple[Finding, ...]:
+    """What the seers of this table learned tonight.
+
+    Delivered with the rest of the night rather than the moment she looks: the
+    answer does not depend on anything else that happens, so nothing is lost,
+    and the night keeps a single moment where information is handed out (D-006).
+    """
+    return tuple(
+        Finding(
+            seer=choice.actor,
+            target=choice.target,
+            revelation=Revelation.of(
+                state.player(choice.target).role, in_full=policy.seer_learns_exact_role
+            ),
+        )
+        for choice in state.night_choices
+        if choice.action is RoleActionName.INSPECT
+    )

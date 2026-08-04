@@ -133,10 +133,15 @@ def test_the_corpus_actually_hides_things_from_everyone() -> None:
 def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
     """The one secret the whole game turns on, searched for under any field.
 
-    Run with the discreet policy, where no revelation is supposed to happen at
-    all: any role name a player can read is then necessarily a leak.
+    Run with every setting that hands a role out switched off — no revelation at
+    death, and a seer who only reads "wolf or not". Any role name a player can
+    read is then necessarily a leak, which is what makes the sweep worth running.
+    What the seer is *entitled* to read is a rule of her own, tested with her.
     """
-    result = played(seed, policy=InformationPolicy(reveal_role_on_death=False))
+    result = played(
+        seed,
+        policy=InformationPolicy(reveal_role_on_death=False, seer_learns_exact_role=False),
+    )
 
     for player in result.state.players:
         readable = leaves_of(project_journal(result.journal, Recipient.of(player)))

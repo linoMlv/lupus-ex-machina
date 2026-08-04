@@ -133,10 +133,11 @@ def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction)
             raise IllegalIntentError(
                 "The pack designates its prey by spreading points, not one wolf at a time"
             )
-        case RoleActionName.INSPECT | RoleActionName.HEAL | RoleActionName.POISON:
-            # The rules of the powered roles land with the roles themselves
-            # (J4.4 to J4.6). Refusing what nothing would apply keeps an agent
-            # from believing it acted.
+        case RoleActionName.INSPECT:
+            _validate_inspection(state, actor, intent.target)
+        case RoleActionName.HEAL | RoleActionName.POISON:
+            # The witch lands next (J4.5). Refusing what nothing would apply
+            # keeps an agent from believing it acted.
             raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
         case RoleActionName.SHOOT:
             raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
@@ -155,6 +156,16 @@ def _ensure_the_role_owns_the_action(
     role = ROLES[state.player(actor).role]
     if action not in role.actions:
         raise IllegalIntentError(f"A {role.name} cannot {action}")
+
+
+def _validate_inspection(state: GameState, actor: PlayerId, target: PlayerId) -> None:
+    """The seer reads one living player a night, and never herself (D-031)."""
+    if state.has_acted_tonight(actor):
+        raise IllegalIntentError(f"Player {actor} has already looked at someone tonight")
+    if target == actor:
+        raise IllegalIntentError(f"Player {actor} already knows what they are themselves")
+
+    _ensure_alive_target(state, target)
 
 
 def _validate_priority_share(state: GameState, actor: PlayerId, intent: SharePriority) -> None:
