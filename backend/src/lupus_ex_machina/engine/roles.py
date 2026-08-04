@@ -50,6 +50,12 @@ class RoleActionName(StrEnum):
     SHOOT = "shoot"
 
 
+#: Powers that work once in a whole game rather than once a night. Stated in one
+#: place because two things read it — the night, which spends them, and the
+#: replay, which has to spend them again to rebuild the same game.
+ONE_SHOT_ACTIONS = frozenset({RoleActionName.HEAL, RoleActionName.POISON, RoleActionName.SHOOT})
+
+
 class DeathTrigger(StrEnum):
     """What a role sets off by dying."""
 

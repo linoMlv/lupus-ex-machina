@@ -132,7 +132,7 @@ def test_a_resolved_night_kills_its_victim() -> None:
     recorder.write(
         PriorityShared(actor=WOLF.id, allocations=(PriorityPoint(target=VILLAGER.id, points=60),))
     )
-    recorder.enter(Phase.RESOLUTION).write(NightResolved(victim=VILLAGER.id))
+    recorder.enter(Phase.RESOLUTION).write(NightResolved(victims=(VILLAGER.id,)))
 
     rebuilt = replay(recorder.journal.events)
 

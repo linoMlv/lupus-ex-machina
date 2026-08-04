@@ -45,7 +45,7 @@ def test_the_most_voted_player_is_eliminated() -> None:
 
     resolved, eliminated = resolve_day(state)
 
-    assert eliminated == VILLAGER
+    assert eliminated == (VILLAGER,)
     assert not resolved.is_alive(VILLAGER)
     assert len(resolved.living) == 4
 
@@ -56,7 +56,7 @@ def test_a_tie_eliminates_nobody() -> None:
 
     resolved, eliminated = resolve_day(state)
 
-    assert eliminated is None
+    assert eliminated == ()
     assert len(resolved.living) == 5
 
 
@@ -70,7 +70,7 @@ def test_blank_votes_do_not_count_towards_anyone() -> None:
 
     _, eliminated = resolve_day(state)
 
-    assert eliminated == VILLAGER
+    assert eliminated == (VILLAGER,)
 
 
 def test_a_fully_blank_vote_eliminates_nobody() -> None:
@@ -79,7 +79,7 @@ def test_a_fully_blank_vote_eliminates_nobody() -> None:
 
     resolved, eliminated = resolve_day(state)
 
-    assert eliminated is None
+    assert eliminated == ()
     assert len(resolved.living) == 5
 
 

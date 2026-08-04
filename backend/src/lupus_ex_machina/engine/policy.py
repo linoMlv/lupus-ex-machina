@@ -39,6 +39,14 @@ class InformationPolicy(BaseModel):
     be turned on knowingly (D-031).
     """
 
+    wake_witch_without_potions: bool = True
+    """Whether the witch is woken once both her potions are gone (D-054).
+
+    On by default. She learns whom the pack took, which she would learn at dawn
+    anyway, so the information is worth only the round it is given in — and a
+    table where she suddenly stops being called would say more than that.
+    """
+
     reveal_role_on_death: bool = False
     """Whether the role of a player who just died is announced (D-072).
 

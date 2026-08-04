@@ -30,6 +30,7 @@ from lupus_ex_machina.engine.events import (
     PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PowerSpent,
     PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
@@ -78,6 +79,10 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         Visibility.for_player(SEER),
     ),
     (
+        PowerSpent(actor=WOLF, action=RoleActionName.POISON),
+        Visibility.for_player(WOLF),
+    ),
+    (
         SeerInspected(seer=SEER, target=WOLF, revelation=A_FINDING),
         Visibility.for_player(SEER),
     ),
@@ -86,7 +91,7 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
     (PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."), PACK),
     (RunoffOpened(targets=(VILLAGER,)), PACK),
     (VoteResolved(eliminated=VILLAGER), Visibility.public()),
-    (NightResolved(victim=VILLAGER), Visibility.public()),
+    (NightResolved(victims=(VILLAGER,)), Visibility.public()),
     (RoleRevealed(player=VILLAGER, role=RoleName.VILLAGER), Visibility.public()),
     (IntentRejected(actor=WOLF, reason="dead players cannot act"), Visibility.spectator_only()),
     (GameEnded(outcome=Outcome.VILLAGE_WINS), Visibility.public()),
@@ -150,7 +155,7 @@ def test_a_blank_ballot_is_public_the_moment_it_is_cast() -> None:
 def test_death_is_public_whatever_took_the_player() -> None:
     """Never configurable — only the role of the deceased may stay hidden (D-072)."""
     assert VoteResolved(eliminated=VILLAGER).audience == Visibility.public()
-    assert NightResolved(victim=VILLAGER).audience == Visibility.public()
+    assert NightResolved(victims=(VILLAGER,)).audience == Visibility.public()
 
 
 def test_the_pack_channel_never_leaves_the_pack() -> None:

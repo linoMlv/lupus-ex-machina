@@ -15,17 +15,30 @@ audience (D-009). The boundary drawn here is the one that model will formalise.
 
 from pydantic import BaseModel, ConfigDict
 
-from lupus_ex_machina.engine.intents import PRIORITY_BUDGET, IntentKind
-from lupus_ex_machina.engine.night import prey_of
+from lupus_ex_machina.engine.errors import IllegalIntentError
+from lupus_ex_machina.engine.intents import (
+    PRIORITY_BUDGET,
+    Intent,
+    IntentKind,
+    PriorityPoint,
+    RoleAction,
+    SharePriority,
+)
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.engine.validation import ACTIONABLE_PHASES, BOOTSTRAP_DAY
+from lupus_ex_machina.engine.validation import (
+    ACTIONABLE_PHASES,
+    BOOTSTRAP_DAY,
+    validate_intent,
+)
 
 #: Single-target powers the engine can settle today. Each entry disappears from
-#: this list by being implemented, not by being removed from a role (J4.5, J4.6).
-RESOLVED_NIGHT_ACTIONS = frozenset({RoleActionName.INSPECT})
+#: this list by being implemented, not by being removed from a role (J4.6).
+RESOLVED_NIGHT_ACTIONS = frozenset(
+    {RoleActionName.INSPECT, RoleActionName.HEAL, RoleActionName.POISON}
+)
 
 
 class PublicPlayer(BaseModel):
@@ -148,16 +161,34 @@ def _allowed_at_night(state: GameState, viewer: PlayerId) -> tuple[IntentKind, .
 def _night_actions(state: GameState, viewer: PlayerId) -> tuple[RoleActionName, ...]:
     """Single-target powers this player may still use tonight.
 
-    Read off the registry, so a role gains its move by being declared rather
-    than by being added to a list here as well (D-010).
+    Candidates come from the registry, so a role gains its move by being
+    declared (D-010); which of them survive is settled by putting each to the
+    validator. The offer is therefore the acceptance, rather than a second
+    statement of it that could drift.
     """
     if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
         return ()
-    if state.has_acted_tonight(viewer):
-        return ()
 
     role = ROLES[state.player(viewer).role]
-    return tuple(sorted(role.actions & RESOLVED_NIGHT_ACTIONS))
+    return tuple(
+        sorted(
+            action
+            for action in role.actions & RESOLVED_NIGHT_ACTIONS
+            if any(
+                _accepted(state, viewer, RoleAction(action=action, target=candidate.id))
+                for candidate in state.living
+            )
+        )
+    )
+
+
+def _accepted(state: GameState, viewer: PlayerId, intent: Intent) -> bool:
+    """Whether the rules would let this player play that move right now."""
+    try:
+        validate_intent(state, viewer, intent)
+    except IllegalIntentError:
+        return False
+    return True
 
 
 def _may_designate(state: GameState, viewer: PlayerId) -> bool:
@@ -184,14 +215,30 @@ def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
 
 
 def _night_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
-    """Whom this player may aim at tonight.
+    """Whom this player may aim at tonight, whichever of their powers they use.
 
-    The pack reads its prey from the same place the validator reads it, so the
-    offer and the acceptance cannot describe different tables. A seer may read
-    anyone still alive but herself.
+    Every candidate is put to the validator, so a target is offered exactly when
+    some legal move can be played on it. A witch holding two potions sees the
+    union of what each of them reaches — the choice of potion is hers.
     """
+    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
+        return ()
+
+    actions = _night_actions(state, viewer)
+    return tuple(
+        player.id
+        for player in state.living
+        if _reachable_tonight(state, viewer, player.id, actions)
+    )
+
+
+def _reachable_tonight(
+    state: GameState, viewer: PlayerId, target: PlayerId, actions: tuple[RoleActionName, ...]
+) -> bool:
     if _may_designate(state, viewer):
-        return tuple(player.id for player in prey_of(state))
-    if _night_actions(state, viewer):
-        return tuple(player.id for player in state.living if player.id != viewer)
-    return ()
+        return _accepted(
+            state, viewer, SharePriority(allocations=(PriorityPoint(target=target, points=1),))
+        )
+    return any(
+        _accepted(state, viewer, RoleAction(action=action, target=target)) for action in actions
+    )

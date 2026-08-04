@@ -309,11 +309,7 @@ FOREIGN_ACTIONS = [
 
 #: Actions whose rules land with the role that owns them, later in this jalon.
 #: The engine refuses what it cannot resolve rather than letting it through.
-UNRESOLVED_ACTIONS = [
-    RoleActionName.HEAL,
-    RoleActionName.POISON,
-    RoleActionName.SHOOT,
-]
+UNRESOLVED_ACTIONS = [RoleActionName.SHOOT]
 
 
 def a_table_of(role: RoleName) -> GameState:

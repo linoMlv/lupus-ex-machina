@@ -106,9 +106,9 @@ def test_recording_a_share_kills_nobody() -> None:
 def test_the_victim_only_dies_when_the_night_is_resolved() -> None:
     state = shared(shared(night(), WOLF, p5=60), OTHER_WOLF, p5=40)
 
-    resolved, victim = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state, policy=DISCREET)
 
-    assert victim == VILLAGER
+    assert victims == (VILLAGER,)
     assert not resolved.is_alive(VILLAGER)
 
 
@@ -122,9 +122,9 @@ def test_resolving_a_night_clears_what_it_collected() -> None:
 
 
 def test_a_night_nobody_acted_in_takes_nobody() -> None:
-    resolved, victim = resolve_night(night(), policy=DISCREET)
+    resolved, victims = resolve_night(night(), policy=DISCREET)
 
-    assert victim is None
+    assert victims == ()
     assert len(resolved.living) == len(TABLE)
 
 
@@ -169,9 +169,9 @@ def test_a_tie_that_survives_the_runoff_takes_nobody() -> None:
     """Second tie, no victim — the same rule as the day vote (D-050)."""
     state = shared(night(), WOLF, p5=50, p2=50)
 
-    _, victim = resolve_night(state, policy=DISCREET)
+    _, victims = resolve_night(state, policy=DISCREET)
 
-    assert victim is None
+    assert victims == ()
 
 
 def test_a_runoff_reopens_the_night_for_the_tied_prey_alone() -> None:

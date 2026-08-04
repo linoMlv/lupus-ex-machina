@@ -129,7 +129,7 @@ def test_every_death_is_written_down() -> None:
     dead = {player.id for player in result.state.players if not player.alive}
 
     recorded = {vote.eliminated for vote in facts_of(result, VoteResolved)} | {
-        night.victim for night in facts_of(result, NightResolved)
+        victim for night in facts_of(result, NightResolved) for victim in night.victims
     }
 
     assert dead <= {victim for victim in recorded if victim is not None}

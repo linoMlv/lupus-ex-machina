@@ -31,6 +31,7 @@ from lupus_ex_machina.engine.events import (
     PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PowerSpent,
     PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
@@ -101,14 +102,18 @@ class _Replay:
                 self._state = self._running().with_night_choice_from(
                     used.actor, used.action, used.target
                 )
+            case PowerSpent() as spent:
+                self._state = self._running().with_power_spent_by(spent.actor, spent.action)
             case PriorityShared() as spread:
                 self._state = self._running().with_priority_share_from(
                     spread.actor, spread.allocations
                 )
             case RunoffOpened() as runoff:
                 self._state = self._running().reopened_for_runoff(runoff.targets)
-            case VoteResolved(eliminated=victim) | NightResolved(victim=victim):
-                self._close_round(victim)
+            case VoteResolved() as vote:
+                self._close_round(() if vote.eliminated is None else (vote.eliminated,))
+            case NightResolved() as night:
+                self._close_round(night.victims)
             case (
                 PackRevealed()
                 | SpeechDelivered()
@@ -174,8 +179,6 @@ class _Replay:
             raise JournalReplayError(f"A game opens on Night 0, not on {entered.phase}")
         self._state = GameState.initial(self._table())
 
-    def _close_round(self, victim: PlayerId | None) -> None:
+    def _close_round(self, victims: tuple[PlayerId, ...]) -> None:
         """Apply a resolution: the dead, then the round wiped clean."""
-        running = self._running()
-        state = running if victim is None else running.with_players_killed([victim])
-        self._state = state.cleared_of_round_choices()
+        self._state = self._running().with_players_killed(victims).cleared_of_round_choices()

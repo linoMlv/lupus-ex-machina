@@ -22,9 +22,10 @@ from lupus_ex_machina.engine.intents import (
     Speak,
     Wait,
 )
-from lupus_ex_machina.engine.night import prey_of
+from lupus_ex_machina.engine.night import prey_of, victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState
 
@@ -135,10 +136,10 @@ def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction)
             )
         case RoleActionName.INSPECT:
             _validate_inspection(state, actor, intent.target)
-        case RoleActionName.HEAL | RoleActionName.POISON:
-            # The witch lands next (J4.5). Refusing what nothing would apply
-            # keeps an agent from believing it acted.
-            raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
+        case RoleActionName.HEAL:
+            _validate_healing(state, actor, intent.target)
+        case RoleActionName.POISON:
+            _validate_poisoning(state, actor, intent.target)
         case RoleActionName.SHOOT:
             raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
         case _:  # pragma: no cover - the enum is closed, mypy proves this is dead
@@ -166,6 +167,38 @@ def _validate_inspection(state: GameState, actor: PlayerId, target: PlayerId) ->
         raise IllegalIntentError(f"Player {actor} already knows what they are themselves")
 
     _ensure_alive_target(state, target)
+
+
+def _validate_healing(state: GameState, actor: PlayerId, target: PlayerId) -> None:
+    """The potion of life answers the night's attack, and nothing else (D-029).
+
+    It is poured on the prey the pack settled on — possibly the witch herself,
+    which is the only way she survives a night.
+    """
+    _ensure_the_potion_is_still_full(state, actor, RoleActionName.HEAL)
+
+    taken = victim_seen_by_the_witch(state, policy=InformationPolicy())
+    if taken is None or target != taken:
+        raise IllegalIntentError("The potion of life only saves the victim of the night")
+
+
+def _validate_poisoning(state: GameState, actor: PlayerId, target: PlayerId) -> None:
+    """The potion of death takes any other living player (D-029)."""
+    _ensure_the_potion_is_still_full(state, actor, RoleActionName.POISON)
+    if target == actor:
+        raise IllegalIntentError(f"Player {actor} would not poison themselves")
+
+    _ensure_alive_target(state, target)
+
+
+def _ensure_the_potion_is_still_full(
+    state: GameState, actor: PlayerId, potion: RoleActionName
+) -> None:
+    """One potion a night, and each one works once in a whole game (D-029)."""
+    if state.has_acted_tonight(actor):
+        raise IllegalIntentError(f"Player {actor} has already used a potion tonight")
+    if state.has_spent(actor, potion):
+        raise IllegalIntentError(f"Player {actor} has no {potion} potion left")
 
 
 def _validate_priority_share(state: GameState, actor: PlayerId, intent: SharePriority) -> None:

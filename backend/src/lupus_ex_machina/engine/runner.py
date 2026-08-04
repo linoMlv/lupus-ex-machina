@@ -38,6 +38,7 @@ from lupus_ex_machina.engine.events import (
     PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PowerSpent,
     PriorityShared,
     RoleAssigned,
     RoleRevealed,
@@ -56,7 +57,13 @@ from lupus_ex_machina.engine.intents import (
     Wait,
 )
 from lupus_ex_machina.engine.journal import Journal
-from lupus_ex_machina.engine.night import findings_of, night_callers, resolve_night, tied_prey
+from lupus_ex_machina.engine.night import (
+    findings_of,
+    night_callers,
+    powers_spent_tonight,
+    resolve_night,
+    tied_prey,
+)
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
@@ -78,19 +85,19 @@ Agents = Mapping[PlayerId, Agent]
 
 # What `resolve_day` and `resolve_night` both are: they close a phase, returning
 # the new state and whoever died, if anyone.
-Resolver = Callable[[GameState], tuple[GameState, PlayerId | None]]
+Resolver = Callable[[GameState], tuple[GameState, tuple[PlayerId, ...]]]
 
 # How a closed phase announces its outcome. Both resolutions produce the same
 # shape — a victim or nobody — but they are two different facts of the game.
-Announcement = Callable[[PlayerId | None], EventPayload]
+Announcement = Callable[[tuple[PlayerId, ...]], EventPayload]
 
 
-def _vote_outcome(victim: PlayerId | None) -> EventPayload:
-    return VoteResolved(eliminated=victim)
+def _vote_outcome(victims: tuple[PlayerId, ...]) -> EventPayload:
+    return VoteResolved(eliminated=victims[0] if victims else None)
 
 
-def _night_outcome(victim: PlayerId | None) -> EventPayload:
-    return NightResolved(victim=victim)
+def _night_outcome(victims: tuple[PlayerId, ...]) -> EventPayload:
+    return NightResolved(victims=victims)
 
 
 class GameDidNotEndError(EngineError, RuntimeError):
@@ -205,7 +212,13 @@ class _Run:
             state = self._hold_a_runoff(state, tied)
 
         self._hand_out_what_the_seers_read(state)
+        self._write_down_what_was_used_up(state)
         return self._resolve(state, self._resolve_the_night, _night_outcome)
+
+    def _write_down_what_was_used_up(self, state: GameState) -> None:
+        """Record the potions this night emptied, before the round is wiped."""
+        for actor, action in powers_spent_tonight(state):
+            self._journal.record(PowerSpent(actor=actor, action=action), at=state)
 
     def _hand_out_what_the_seers_read(self, state: GameState) -> None:
         """Tell each seer what she read, and the table if she speaks (D-031)."""
@@ -227,7 +240,7 @@ class _Run:
         at the end (D-006). The day has no such guarantee — the hunter fires as
         they die — which is why its own loop cannot take the same shortcut.
         """
-        for caller in night_callers(state):
+        for caller in night_callers(state, policy=self._policy):
             state = self._apply(state, caller.id, self._ask(state, caller.id))
         return state
 
@@ -236,12 +249,12 @@ class _Run:
         state = state.reopened_for_runoff(tied)
         self._journal.record(RunoffOpened(targets=tied), at=state)
 
-        for wolf in night_callers(state):
+        for wolf in night_callers(state, policy=self._policy):
             if wolf.team is Team.WEREWOLVES:
                 state = self._apply(state, wolf.id, self._ask(state, wolf.id))
         return state
 
-    def _resolve_the_night(self, state: GameState) -> tuple[GameState, PlayerId | None]:
+    def _resolve_the_night(self, state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
         """Close the night with the options the game was configured with."""
         return resolve_night(state, policy=self._policy)
 
@@ -274,9 +287,9 @@ class _Run:
     ) -> tuple[GameState, Outcome | None]:
         """Apply a resolution, then evaluate the victory — in that order (D-059)."""
         state = self.enter(state, Phase.RESOLUTION)
-        state, victim = resolver(state)
-        self._journal.record(announce(victim), at=state)
-        self._reveal_the_role_of(state, victim)
+        state, victims = resolver(state)
+        self._journal.record(announce(victims), at=state)
+        self._reveal_the_roles_of(state, victims)
 
         outcome = evaluate_victory(state)
         if outcome is not None:
@@ -285,14 +298,17 @@ class _Run:
             return state, outcome
         return state, None
 
-    def _reveal_the_role_of(self, state: GameState, victim: PlayerId | None) -> None:
-        """Announce what the deceased was, when the configuration allows it (D-072).
+    def _reveal_the_roles_of(self, state: GameState, victims: tuple[PlayerId, ...]) -> None:
+        """Announce what the deceased were, when the configuration allows it (D-072).
 
         Death itself was already recorded, and is never configurable.
         """
-        if victim is None or not self._policy.reveal_role_on_death:
+        if not self._policy.reveal_role_on_death:
             return
-        self._journal.record(RoleRevealed(player=victim, role=state.player(victim).role), at=state)
+        for victim in victims:
+            self._journal.record(
+                RoleRevealed(player=victim, role=state.player(victim).role), at=state
+            )
 
     # --- Agents ----------------------------------------------------------
 

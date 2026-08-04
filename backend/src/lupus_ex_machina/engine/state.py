@@ -42,6 +42,19 @@ class NightChoice(BaseModel):
     target: PlayerId
 
 
+class SpentPower(BaseModel):
+    """A one-shot power its holder has now used up.
+
+    Kept apart from the choices of a round, which are wiped as each round ends:
+    a potion is spent for the rest of the game, not for the night (D-029).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    actor: PlayerId
+    action: RoleActionName
+
+
 class PriorityShare(BaseModel):
     """One wolf's spread of the night's budget over the prey (D-008)."""
 
@@ -62,6 +75,7 @@ class GameState(BaseModel):
     ballots: tuple[Ballot, ...] = ()
     night_choices: tuple[NightChoice, ...] = ()
     priority_shares: tuple[PriorityShare, ...] = ()
+    spent_powers: tuple[SpentPower, ...] = ()
     runoff_targets: tuple[PlayerId, ...] = ()
     """Whom a silent second round is restricted to, empty outside one (D-062).
 
@@ -128,6 +142,12 @@ class GameState(BaseModel):
         ballot = Ballot(voter=voter, target=target)
         return self.model_copy(update={"ballots": (*self.ballots, ballot)})
 
+    def has_spent(self, player_id: PlayerId, action: RoleActionName) -> bool:
+        """Whether that player has already used up that one-shot power."""
+        return any(
+            spent.actor == player_id and spent.action is action for spent in self.spent_powers
+        )
+
     def with_night_choice_from(
         self, actor: PlayerId, action: RoleActionName, target: PlayerId
     ) -> "GameState":
@@ -155,6 +175,11 @@ class GameState(BaseModel):
                 "runoff_targets": tuple(targets),
             }
         )
+
+    def with_power_spent_by(self, actor: PlayerId, action: RoleActionName) -> "GameState":
+        """Return the state with that one-shot power used up for good."""
+        spent = SpentPower(actor=actor, action=action)
+        return self.model_copy(update={"spent_powers": (*self.spent_powers, spent)})
 
     def with_players_killed(self, victims: Iterable[PlayerId]) -> "GameState":
         """Return the state with the given players dead."""

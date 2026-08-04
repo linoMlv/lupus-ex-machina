@@ -18,22 +18,54 @@ from pydantic import BaseModel, ConfigDict
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.priority import tally
-from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
+from lupus_ex_machina.engine.roles import ONE_SHOT_ACTIONS, ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 
 
-def night_callers(state: GameState) -> tuple[Player, ...]:
+def night_callers(
+    state: GameState, *, policy: InformationPolicy | None = None
+) -> tuple[Player, ...]:
     """The living players the night wakes, in the order it wakes them.
 
     Ordered by the rank their role declares, then by seat, so two runs of the
     same game call the same people in the same order.
     """
+    settings = policy or InformationPolicy()
     return tuple(
         sorted(
-            (player for player in state.living if ROLES[player.role].wakes_at_night),
+            (
+                player
+                for player in state.living
+                if ROLES[player.role].wakes_at_night
+                and _has_something_to_do(state, player, settings)
+            ),
             key=lambda player: (ROLES[player.role].wake_order or 0, player.seat),
         )
     )
+
+
+def _has_something_to_do(state: GameState, player: Player, policy: InformationPolicy) -> bool:
+    """Whether waking this player is worth it, which only the witch can fail (D-054)."""
+    if player.role is not RoleName.WITCH or policy.wake_witch_without_potions:
+        return True
+    return bool(potions_left_to(state, player.id))
+
+
+def potions_left_to(state: GameState, witch: PlayerId) -> frozenset[RoleActionName]:
+    """The potions that witch has not drunk yet. Each one works once (D-029)."""
+    return frozenset(
+        action for action in ROLES[RoleName.WITCH].actions if not state.has_spent(witch, action)
+    )
+
+
+def victim_seen_by_the_witch(state: GameState, *, policy: InformationPolicy) -> PlayerId | None:
+    """Whom the pack has settled on, which is what the witch is shown (D-029).
+
+    She is woken after it precisely so this has an answer, and she sees a prey
+    that has been *designated* rather than one already dead — the whole reason
+    the night resolves in one go (D-006).
+    """
+    return designated_prey(state, policy=policy)
 
 
 def prey_of(state: GameState) -> tuple[Player, ...]:
@@ -86,13 +118,45 @@ def _forced_choice(state: GameState) -> PlayerId | None:
     return min(candidates, key=lambda player: player.seat).id
 
 
+def powers_spent_tonight(state: GameState) -> tuple[tuple[PlayerId, RoleActionName], ...]:
+    """The one-shot powers this night used up, in the order they were played.
+
+    Read by the night, which spends them, and by whoever records the game, so
+    the state and its journal cannot end up disagreeing about a potion.
+    """
+    return tuple(
+        (choice.actor, choice.action)
+        for choice in state.night_choices
+        if choice.action in ONE_SHOT_ACTIONS
+    )
+
+
+def _potion_targets(state: GameState, action: RoleActionName) -> tuple[PlayerId, ...]:
+    return tuple(choice.target for choice in state.night_choices if choice.action is action)
+
+
 def resolve_night(
     state: GameState, *, policy: InformationPolicy
-) -> tuple[GameState, PlayerId | None]:
-    """Close the night: apply what it decided, and clear what it collected."""
-    victim = designated_prey(state, policy=policy)
-    killed = state if victim is None else state.with_players_killed([victim])
-    return killed.cleared_of_round_choices(), victim
+) -> tuple[GameState, tuple[PlayerId, ...]]:
+    """Close the night, in the order the rules are written.
+
+    Attack, then the potion that answers it, then the one that adds to it. The
+    order is the specification: it reads aloud the way the rules do, and moving
+    a line moves a rule.
+    """
+    taken = designated_prey(state, policy=policy)
+    saved = _potion_targets(state, RoleActionName.HEAL)
+    poisoned = _potion_targets(state, RoleActionName.POISON)
+
+    victims = tuple(
+        dict.fromkeys(([] if taken is None or taken in saved else [taken]) + list(poisoned))
+    )
+
+    settled = state.with_players_killed(victims)
+    for actor, potion in powers_spent_tonight(state):
+        settled = settled.with_power_spent_by(actor, potion)
+
+    return settled.cleared_of_round_choices(), victims
 
 
 class Revelation(BaseModel):

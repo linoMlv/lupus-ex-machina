@@ -43,6 +43,7 @@ class EventKind(StrEnum):
     BALLOT_CAST = "ballot_cast"
     BALLOT_ANNOUNCED = "ballot_announced"
     NIGHT_POWER_USED = "night_power_used"
+    POWER_SPENT = "power_spent"
     SEER_INSPECTED = "seer_inspected"
     SEER_FINDING_ANNOUNCED = "seer_finding_announced"
     PRIORITY_SHARED = "priority_shared"
@@ -194,6 +195,24 @@ class NightPowerUsed(Fact):
         return Visibility.for_player(self.actor)
 
 
+class PowerSpent(Fact):
+    """A power that works once has now been used up (D-029).
+
+    Recorded on its own because it outlives the round: the choice that spent it
+    is wiped when the night closes, and a game rebuilt from the journal would
+    otherwise hand the potion back.
+    """
+
+    kind: Literal[EventKind.POWER_SPENT] = EventKind.POWER_SPENT
+    actor: PlayerId
+    action: RoleActionName
+
+    @property
+    def audience(self) -> Visibility:
+        """Its holder: the table never learns what is left in the cupboard."""
+        return Visibility.for_player(self.actor)
+
+
 class SeerInspected(Fact):
     """What the seer read on the player she looked at (D-031)."""
 
@@ -284,10 +303,10 @@ class VoteResolved(Fact):
 
 
 class NightResolved(Fact):
-    """The night is over, with or without a victim."""
+    """The night is over. It may take nobody, or more than one (D-029)."""
 
     kind: Literal[EventKind.NIGHT_RESOLVED] = EventKind.NIGHT_RESOLVED
-    victim: PlayerId | None = None
+    victims: tuple[PlayerId, ...] = ()
 
     @property
     def audience(self) -> Visibility:
@@ -385,6 +404,7 @@ EventPayload = Annotated[
     | BallotCast
     | BallotAnnounced
     | NightPowerUsed
+    | PowerSpent
     | SeerInspected
     | SeerFindingAnnounced
     | PriorityShared

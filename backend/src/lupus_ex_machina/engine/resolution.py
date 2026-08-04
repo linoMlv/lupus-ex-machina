@@ -19,11 +19,16 @@ from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.state import GameState
 
 
-def resolve_day(state: GameState) -> tuple[GameState, PlayerId | None]:
-    """Count the ballots, eliminate the designated player, and close the round."""
+def resolve_day(state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
+    """Count the ballots, eliminate the designated player, and close the round.
+
+    A vote takes at most one player, but it hands back a run of them like the
+    night does: both close a phase, and one shape lets the runner treat them
+    alike rather than knowing which is which.
+    """
     named = (ballot.target for ballot in state.ballots if ballot.target is not None)
     eliminated = _single_favourite(named)
-    return _apply(state, eliminated), eliminated
+    return _apply(state, eliminated), () if eliminated is None else (eliminated,)
 
 
 def _single_favourite(targets: Iterable[PlayerId]) -> PlayerId | None:
