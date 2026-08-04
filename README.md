@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 à 3 sur 12 terminés.**
+**Jalons 1 à 4 sur 12 terminés.**
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -154,7 +154,13 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   **c'est vérifié sur cent parties**, pas seulement voulu. Le journal est la source de vérité : une
   partie se rejoue intégralement depuis lui, et survit à l'aller-retour sur disque.
 
-Les rôles à pouvoir et la résolution nocturne (jalon 4) sont la prochaine étape.
+- **J4 — Les rôles et la nuit.** Les cinq rôles jouent : la meute désigne sa proie en répartissant
+  un budget de points plutôt qu'en votant un nom, la voyante lit un joueur par nuit, la sorcière voit
+  la victime et peut la sauver, et le chasseur emporte quelqu'un en mourant — son tir étant résolu
+  *avant* que la victoire soit regardée, ce qui est la seule façon d'obtenir les dénouements attendus.
+  Rien ne prend effet avant la fin de la nuit : tout y est collecté, puis réglé d'un bloc.
+
+Le débat spontané et le protocole d'enchères (jalon 5) — le cœur du projet — sont la prochaine étape.
 
 ---
 
