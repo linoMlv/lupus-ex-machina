@@ -55,6 +55,28 @@ class SpentPower(BaseModel):
     action: RoleActionName
 
 
+class Speech(BaseModel):
+    """One turn at the floor, as the round remembers it.
+
+    The round keeps this because the auction that decides who speaks next is
+    scored against it (D-002): who has just spoken, how much they have spoken,
+    and whom they were talking to. What was actually *said* is not here — that
+    belongs to the journal, which is where the transcript lives.
+
+    Whom a speaker addressed and accused is declared by the speaker rather than
+    read out of their words. Digging it out of French prose would put a parser
+    of French in the middle of the rules, and would be exactly as reliable as
+    that sounds.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    speaker: PlayerId
+    words: int = Field(ge=0)
+    addressed: PlayerId | None = None
+    accused: PlayerId | None = None
+
+
 class PriorityShare(BaseModel):
     """One wolf's spread of the night's budget over the prey (D-008)."""
 
@@ -73,6 +95,12 @@ class GameState(BaseModel):
     phase: Phase
     day: int = Field(ge=0)
     ballots: tuple[Ballot, ...] = ()
+    floor: tuple[Speech, ...] = ()
+    """The turns at the floor this round has had, in the order they were taken.
+
+    Wiped with the rest of the round: an auction weighs the day it is held in,
+    not the ones before it.
+    """
     night_choices: tuple[NightChoice, ...] = ()
     priority_shares: tuple[PriorityShare, ...] = ()
     spent_powers: tuple[SpentPower, ...] = ()
@@ -184,6 +212,18 @@ class GameState(BaseModel):
             }
         )
 
+    def with_speech_from(
+        self,
+        speaker: PlayerId,
+        *,
+        words: int,
+        addressed: PlayerId | None = None,
+        accused: PlayerId | None = None,
+    ) -> "GameState":
+        """Return the state with one more turn at the floor remembered (D-002)."""
+        speech = Speech(speaker=speaker, words=words, addressed=addressed, accused=accused)
+        return self.model_copy(update={"floor": (*self.floor, speech)})
+
     def with_prey_drawn(self, prey: PlayerId) -> "GameState":
         """Return the state with the lot's answer written down (D-081)."""
         return self.model_copy(update={"drawn_prey": prey})
@@ -207,6 +247,7 @@ class GameState(BaseModel):
         return self.model_copy(
             update={
                 "ballots": (),
+                "floor": (),
                 "night_choices": (),
                 "priority_shares": (),
                 "runoff_targets": (),

@@ -11,7 +11,7 @@ from lupus_ex_machina.engine.errors import IllegalTransitionError
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import RoleName, Team
-from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.state import GameState, Speech
 
 WOLF = PlayerId("p0")
 VILLAGER = PlayerId("p1")
@@ -109,3 +109,31 @@ def test_entering_a_phase_keeps_the_current_day_by_default() -> None:
     state = three_player_state().entering(Phase.DAY, day=1).entering(Phase.RESOLUTION)
 
     assert state.day == 1
+
+
+# --- What a round leaves behind ----------------------------------------------
+
+
+def test_a_turn_at_the_floor_is_remembered_for_the_round() -> None:
+    """The auction is scored against it, so the round has to hold it (D-002)."""
+    state = three_player_state().with_speech_from(WOLF, words=12, accused=VILLAGER)
+
+    assert state.floor == (Speech(speaker=WOLF, words=12, accused=VILLAGER),)
+
+
+def test_turns_at_the_floor_keep_the_order_they_were_taken_in() -> None:
+    """Recency is read off the end of it, so the order is the meaning."""
+    state = three_player_state().with_speech_from(WOLF, words=5).with_speech_from(VILLAGER, words=8)
+
+    assert [speech.speaker for speech in state.floor] == [WOLF, VILLAGER]
+
+
+def test_closing_a_round_forgets_what_was_said_in_it() -> None:
+    """An auction weighs the day it is held in, never the ones before it.
+
+    Left behind, yesterday's turns would keep charging a player for words the
+    table has long since moved on from.
+    """
+    state = three_player_state().with_speech_from(WOLF, words=12)
+
+    assert state.cleared_of_round_choices().floor == ()
