@@ -8,12 +8,12 @@ the role of another player must not appear anywhere in the view (GL-3).
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
     PRIORITY_BUDGET,
-    CastVote,
     Intent,
     IntentKind,
     PriorityPoint,
     SharePriority,
-    Speak,
+    TakeTurn,
+    Vote,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
@@ -107,7 +107,8 @@ def test_night_zero_offers_nothing_but_waiting() -> None:
 def test_a_debate_day_offers_speaking_voting_and_waiting() -> None:
     view = project(day(), VILLAGER)
 
-    assert set(view.allowed_intents) == {IntentKind.SPEAK, IntentKind.VOTE, IntentKind.WAIT}
+    assert set(view.allowed_intents) == {IntentKind.TAKE_TURN, IntentKind.WAIT}
+    assert (view.may_speak, view.may_vote) == (True, True), "both halves of a turn are open"
     assert set(view.vote_targets) == {WOLF, OTHER_WOLF, OTHER_VILLAGER}
     assert VILLAGER not in view.vote_targets, "a player cannot vote for themselves"
 
@@ -116,7 +117,7 @@ def test_the_first_day_offers_no_target_at_all() -> None:
     view = project(day(number=1), VILLAGER)
 
     assert view.vote_targets == ()
-    assert IntentKind.VOTE in view.allowed_intents, "the blank vote stays available"
+    assert view.may_vote, "the blank vote stays available"
 
 
 def test_a_player_who_voted_may_only_wait() -> None:
@@ -130,11 +131,14 @@ def test_a_player_who_voted_may_only_wait() -> None:
 
 def test_only_wolves_are_offered_the_night() -> None:
     """The pack keeps its own floor and its own vote; nobody else has either."""
-    assert set(project(night(), WOLF).allowed_intents) == {
-        IntentKind.SPEAK,
+    wolf = project(night(), WOLF)
+
+    assert set(wolf.allowed_intents) == {
+        IntentKind.TAKE_TURN,
         IntentKind.SHARE_PRIORITY,
         IntentKind.WAIT,
     }
+    assert (wolf.may_speak, wolf.may_vote) == (True, False), "the pack talks, it does not vote"
     assert project(night(), VILLAGER).allowed_intents == (IntentKind.WAIT,)
 
 
@@ -155,7 +159,8 @@ def test_a_wolf_that_already_spread_its_points_keeps_only_the_floor() -> None:
 
     view = project(state, WOLF)
 
-    assert set(view.allowed_intents) == {IntentKind.SPEAK, IntentKind.WAIT}
+    assert set(view.allowed_intents) == {IntentKind.TAKE_TURN, IntentKind.WAIT}
+    assert (view.may_speak, view.may_vote) == (True, False)
     assert view.action_targets == ()
     assert view.priority_budget == 0
 
@@ -205,7 +210,7 @@ def test_the_view_offers_exactly_the_targets_the_validator_accepts() -> None:
             for other in state.players:
                 where = f"{state.phase} day {state.day}: {actor.id} -> {other.id}"
                 assert (other.id in view.vote_targets) == accepts(
-                    state, actor.id, CastVote(target=other.id)
+                    state, actor.id, TakeTurn(vote=Vote(target=other.id))
                 ), f"vote, {where}"
                 assert (other.id in view.action_targets) == accepts(
                     state,
@@ -219,17 +224,22 @@ def test_the_view_offers_exactly_the_intent_kinds_the_validator_accepts() -> Non
 
     SHARE_PRIORITY always needs one, so it is covered by the test above.
     """
-    probes: dict[IntentKind, Intent] = {
-        IntentKind.SPEAK: Speak(speech="Je vous écoute."),
-        IntentKind.VOTE: CastVote(),
-        IntentKind.WAIT: Wait(),
-    }
+    speaking = TakeTurn(speech="Je vous écoute.")
+    voting = TakeTurn(vote=Vote())
 
     for state in every_moment_of_a_game():
         for actor in state.players:
             view = project(state, actor.id)
+            where = f"at {state.phase} day {state.day}, for {actor.id}"
 
-            for kind, intent in probes.items():
-                assert (kind in view.allowed_intents) == accepts(state, actor.id, intent), (
-                    f"{kind} at {state.phase} day {state.day}, for {actor.id}"
-                )
+            may_speak = accepts(state, actor.id, speaking)
+            may_vote = accepts(state, actor.id, voting)
+
+            assert view.may_speak == may_speak, f"speaking {where}"
+            assert view.may_vote == may_vote, f"voting {where}"
+            assert (IntentKind.WAIT in view.allowed_intents) == accepts(state, actor.id, Wait()), (
+                f"waiting {where}"
+            )
+            assert (IntentKind.TAKE_TURN in view.allowed_intents) == (may_speak or may_vote), (
+                f"taking a turn {where}"
+            )

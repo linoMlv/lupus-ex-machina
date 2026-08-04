@@ -10,13 +10,13 @@ are a normal path that deserves to be walked as often as the others.
 """
 
 from lupus_ex_machina.engine.intents import (
-    CastVote,
     Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
     SharePriority,
-    Speak,
+    TakeTurn,
+    Vote,
     Wait,
 )
 from lupus_ex_machina.engine.players import PlayerId
@@ -33,8 +33,8 @@ class SilentAgent:
 
     def decide(self, view: PlayerView) -> Intent:
         """Wait, unless a vote is possible — then vote blank."""
-        if IntentKind.VOTE in view.allowed_intents:
-            return CastVote()
+        if view.may_vote:
+            return TakeTurn(vote=Vote())
         return Wait()
 
 
@@ -55,8 +55,8 @@ class AlwaysAccuseAgent:
                     PriorityPoint(target=view.action_targets[0], points=view.priority_budget),
                 )
             )
-        if IntentKind.VOTE in view.allowed_intents:
-            return CastVote(target=view.vote_targets[0] if view.vote_targets else None)
+        if view.may_vote:
+            return TakeTurn(vote=Vote(target=view.vote_targets[0] if view.vote_targets else None))
         return Wait()
 
 
@@ -90,10 +90,8 @@ class RandomAgent:
         kind = self._rng.choice(view.allowed_intents)
 
         match kind:
-            case IntentKind.SPEAK:
-                return Speak(speech=self._improvise(view))
-            case IntentKind.VOTE:
-                return CastVote(target=self._maybe_target(view))
+            case IntentKind.TAKE_TURN:
+                return self._take_a_turn(view)
             case IntentKind.SHARE_PRIORITY:
                 return self._spread(view)
             case IntentKind.ROLE_ACTION:
@@ -103,6 +101,33 @@ class RandomAgent:
                 )
             case _:
                 return Wait()
+
+    def _take_a_turn(self, view: PlayerView) -> Intent:
+        """Do one of the three things a turn can be, drawn among those on offer.
+
+        Speaking and voting are drawn apart rather than as three cases, so
+        "speak and vote at once" comes up as often as the rules allow it (D-028)
+        instead of being a case somebody remembered to write.
+        """
+        speaking = view.may_speak and self._rng.choice((True, False))
+        voting = view.may_vote and (not speaking or self._rng.choice((True, False)))
+        if not speaking and not voting:
+            return Wait()
+
+        accused = self._accuses(view) if speaking else None
+        return TakeTurn(
+            speech=self._improvise(view, accused) if speaking else None,
+            addressed=accused,
+            accused=accused,
+            vote=Vote(target=self._maybe_target(view)) if voting else None,
+        )
+
+    def _accuses(self, view: PlayerView) -> PlayerId | None:
+        """Whom this line goes after, if anyone. Half the time, nobody."""
+        others = view.living_others
+        if not others or self._rng.choice((True, False)):
+            return None
+        return self._rng.choice(others)
 
     def _spread(self, view: PlayerView) -> Intent:
         """Put the whole budget on one prey drawn at random.
@@ -125,17 +150,16 @@ class RandomAgent:
             return None
         return self._rng.choice((*view.vote_targets, None))
 
-    def _improvise(self, view: PlayerView) -> str:
+    def _improvise(self, view: PlayerView, accused: PlayerId | None) -> str:
         """Produce a placeholder line. Real speech arrives with the models (J7).
 
         Players are named by their name, never by their identifier: a line goes
         to the shared transcript, which is read on screen and, from J7 on, by the
         models themselves.
         """
-        others = view.living_others
-        if not others:
+        if accused is None:
             return "Je réfléchis."
-        return f"Je me méfie de {_name_of(view, self._rng.choice(others))}."
+        return f"Je me méfie de {_name_of(view, accused)}."
 
 
 def _name_of(view: PlayerView, player: PlayerId) -> str:

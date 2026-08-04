@@ -11,12 +11,12 @@ import pytest
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
-    CastVote,
     Intent,
     PriorityPoint,
     RoleAction,
     SharePriority,
-    Speak,
+    TakeTurn,
+    Vote,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
@@ -77,7 +77,7 @@ def test_night_zero_allows_nothing_but_waiting() -> None:
     state = game()
 
     validate_intent(state, WOLF, Wait())
-    for intent in (Speak(speech="Bonsoir."), CastVote(), DEVOUR_VILLAGER):
+    for intent in (TakeTurn(speech="Bonsoir."), TakeTurn(vote=Vote()), DEVOUR_VILLAGER):
         with pytest.raises(IllegalIntentError):
             validate_intent(state, WOLF, intent)
 
@@ -89,23 +89,23 @@ def test_a_role_action_is_refused_during_the_day() -> None:
 
 def test_voting_is_refused_during_the_night() -> None:
     with pytest.raises(IllegalIntentError):
-        validate_intent(night(), WOLF, CastVote(target=VILLAGER))
+        validate_intent(night(), WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
 
 
 def test_the_pack_keeps_its_own_floor_at_night() -> None:
     """The wolves have a channel of their own once the table is asleep (D-007)."""
-    validate_intent(night(), WOLF, Speak(speech="On prend Camille."))
+    validate_intent(night(), WOLF, TakeTurn(speech="On prend Camille."))
 
 
 def test_nobody_outside_the_pack_has_anyone_to_talk_to_at_night() -> None:
     with pytest.raises(IllegalIntentError, match="nobody to talk to"):
-        validate_intent(night(), VILLAGER, Speak(speech="Il y a quelqu'un ?"))
+        validate_intent(night(), VILLAGER, TakeTurn(speech="Il y a quelqu'un ?"))
 
 
 def test_the_pack_meets_in_silence_on_night_zero() -> None:
     """They recognise each other without a word (D-032)."""
     with pytest.raises(IllegalIntentError):
-        validate_intent(game(), WOLF, Speak(speech="Salut, collègue."))
+        validate_intent(game(), WOLF, TakeTurn(speech="Salut, collègue."))
 
 
 @pytest.mark.parametrize("phase", [Phase.RESOLUTION, Phase.ENDED])
@@ -124,13 +124,13 @@ def test_day_one_only_accepts_blank_votes() -> None:
     """The first day exists to break the ice: nobody may be named yet (D-032)."""
     state = game().entering(Phase.DAY, day=1)
 
-    validate_intent(state, WOLF, CastVote())
+    validate_intent(state, WOLF, TakeTurn(vote=Vote()))
     with pytest.raises(IllegalIntentError, match="blank"):
-        validate_intent(state, WOLF, CastVote(target=VILLAGER))
+        validate_intent(state, WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
 
 
 def test_later_days_accept_named_votes() -> None:
-    validate_intent(day(), WOLF, CastVote(target=VILLAGER))
+    validate_intent(day(), WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
 
 
 # --- Votes ------------------------------------------------------------------
@@ -138,7 +138,7 @@ def test_later_days_accept_named_votes() -> None:
 
 def test_voting_for_an_unknown_player_is_refused() -> None:
     with pytest.raises(IllegalIntentError, match="Unknown"):
-        validate_intent(day(), WOLF, CastVote(target=UNKNOWN))
+        validate_intent(day(), WOLF, TakeTurn(vote=Vote(target=UNKNOWN)))
 
 
 def test_voting_for_oneself_is_refused() -> None:
@@ -148,14 +148,14 @@ def test_voting_for_oneself_is_refused() -> None:
     move the rules handed to it say does not exist.
     """
     with pytest.raises(IllegalIntentError, match="themselves"):
-        validate_intent(day(), WOLF, CastVote(target=WOLF))
+        validate_intent(day(), WOLF, TakeTurn(vote=Vote(target=WOLF)))
 
 
 def test_voting_for_a_dead_player_is_refused() -> None:
     state = day().with_players_killed([VILLAGER])
 
     with pytest.raises(IllegalIntentError, match="dead"):
-        validate_intent(state, WOLF, CastVote(target=VILLAGER))
+        validate_intent(state, WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
 
 
 def test_a_vote_cannot_be_cast_twice() -> None:
@@ -163,14 +163,14 @@ def test_a_vote_cannot_be_cast_twice() -> None:
     state = day().with_ballot_from(WOLF, VILLAGER)
 
     with pytest.raises(IllegalIntentError, match="already voted"):
-        validate_intent(state, WOLF, CastVote(target=OTHER_VILLAGER))
+        validate_intent(state, WOLF, TakeTurn(vote=Vote(target=OTHER_VILLAGER)))
 
 
 def test_speaking_after_voting_is_refused() -> None:
     state = day().with_ballot_from(WOLF, VILLAGER)
 
     with pytest.raises(IllegalIntentError, match="already voted"):
-        validate_intent(state, WOLF, Speak(speech="Un dernier mot."))
+        validate_intent(state, WOLF, TakeTurn(speech="Un dernier mot."))
 
 
 def test_a_player_who_voted_may_still_wait() -> None:
@@ -281,8 +281,8 @@ def test_a_role_action_never_stands_in_for_the_pack_vote() -> None:
     "intent",
     [
         Wait(),
-        CastVote(target=UNKNOWN),
-        Speak(speech="Bonjour."),
+        TakeTurn(vote=Vote(target=UNKNOWN)),
+        TakeTurn(speech="Bonjour."),
         DEVOUR_VILLAGER,
     ],
 )
@@ -411,3 +411,69 @@ def test_every_action_a_role_declares_can_now_be_played() -> None:
             with contextlib.suppress(IllegalIntentError) as _:
                 pass
             assert action in set(RoleActionName)
+
+
+# --- The three ways a turn can go, and what the rules make of them (J5.2) ----
+
+
+def test_a_turn_may_speak_and_vote_at_once() -> None:
+    """The turn a player votes in is the one turn they may do both (D-028)."""
+    validate_intent(day(), WOLF, TakeTurn(speech="J'ai assez entendu.", vote=Vote(target=VILLAGER)))
+
+
+def test_a_turn_that_speaks_illegally_is_refused_whole() -> None:
+    """Both halves have to hold, or the turn does not.
+
+    Judging them apart would let a player who has lost the floor slip a second
+    ballot in behind a sentence the rules were going to drop anyway.
+    """
+    state = day().with_ballot_from(WOLF, VILLAGER)
+
+    with pytest.raises(IllegalIntentError, match="lost the floor"):
+        validate_intent(state, WOLF, TakeTurn(speech="Encore un mot.", vote=Vote()))
+
+
+def test_a_turn_that_votes_illegally_is_refused_even_when_it_speaks_well() -> None:
+    """The mirror of the case above, and it needs a day where the two differ.
+
+    Day 1 is that day: anyone may speak, nobody may be named (D-032). Written
+    against a player who had already voted, this test passed on the *speech*
+    being refused, and said nothing at all about the ballot.
+    """
+    first_day = game().entering(Phase.DAY, day=1)
+
+    validate_intent(first_day, WOLF, TakeTurn(speech="Je continue."))
+    with pytest.raises(IllegalIntentError, match="blank"):
+        validate_intent(
+            first_day, WOLF, TakeTurn(speech="Je continue.", vote=Vote(target=VILLAGER))
+        )
+
+
+def test_waiting_keeps_the_floor_for_later() -> None:
+    """Saying nothing is a move, not a forfeit (D-048).
+
+    It is what makes silence worth something: a player can sit out a turn and
+    still answer the one after it.
+    """
+    validate_intent(day(), WOLF, Wait())
+
+    validate_intent(day(), WOLF, TakeTurn(speech="Finalement, si."))
+
+
+def test_one_may_not_address_or_accuse_the_dead() -> None:
+    """Only the living can be named.
+
+    The auction pays for being addressed and for being accused (D-002), so
+    naming a corpse would buy a bonus nobody could ever spend.
+    """
+    state = day().with_players_killed([VILLAGER])
+
+    with pytest.raises(IllegalIntentError, match="dead"):
+        validate_intent(state, WOLF, TakeTurn(speech="Tu mens.", accused=VILLAGER))
+    with pytest.raises(IllegalIntentError, match="dead"):
+        validate_intent(state, WOLF, TakeTurn(speech="Tu mens.", addressed=VILLAGER))
+
+
+def test_one_may_not_accuse_someone_who_is_not_at_the_table() -> None:
+    with pytest.raises(IllegalIntentError, match="Unknown"):
+        validate_intent(day(), WOLF, TakeTurn(speech="Tu mens.", accused=UNKNOWN))

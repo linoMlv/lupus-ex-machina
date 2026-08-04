@@ -9,8 +9,9 @@ import pytest
 
 from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.intents import CastVote, IntentKind, Speak, Wait
+from lupus_ex_machina.engine.intents import IntentKind, TakeTurn, Wait
 from lupus_ex_machina.engine.phases import Phase
+from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
@@ -60,9 +61,11 @@ def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
         for player in state.living:
             intent = agent.decide(project(state, player.id))
 
-            assert intent.kind in {IntentKind.WAIT, IntentKind.VOTE}
-            if isinstance(intent, CastVote):
-                assert intent.is_blank
+            assert intent.kind in {IntentKind.WAIT, IntentKind.TAKE_TURN}
+            if isinstance(intent, TakeTurn):
+                assert intent.speech is None, "it never speaks"
+                assert intent.vote is not None, "a turn it takes is always a vote"
+                assert intent.vote.is_blank, "and never names anyone"
 
 
 def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
@@ -71,9 +74,10 @@ def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
 
     intent = AlwaysAccuseAgent().decide(project(state, accuser))
 
-    assert isinstance(intent, CastVote)
-    assert intent.target is not None
-    assert intent.target != accuser
+    assert isinstance(intent, TakeTurn)
+    assert intent.vote is not None
+    assert intent.vote.target is not None
+    assert intent.vote.target != accuser
 
 
 def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() -> None:
@@ -82,8 +86,20 @@ def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() -> Non
 
     intent = AlwaysAccuseAgent().decide(project(state, accuser))
 
-    assert isinstance(intent, CastVote)
-    assert intent.is_blank
+    assert isinstance(intent, TakeTurn)
+    assert intent.vote is not None
+    assert intent.vote.is_blank
+
+
+def lines_of(state: GameState, speaker: PlayerId, seeds: range = range(30)) -> list[str]:
+    """Every line one seat produces over a run of seeds.
+
+    Swept rather than pinned to one seed: what a turn does is now drawn in
+    several steps (D-028), so a single draw says nothing about the agent and
+    would break on any change to the order of its choices.
+    """
+    turns = [RandomAgent(rng=create_rng(seed)).decide(project(state, speaker)) for seed in seeds]
+    return [turn.speech for turn in turns if isinstance(turn, TakeTurn) and turn.speech is not None]
 
 
 def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
@@ -92,28 +108,28 @@ def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
     lonely = state.living[0].id
     state = state.with_players_killed(player.id for player in state.living[1:])
 
-    intent = RandomAgent(rng=create_rng(2)).decide(project(state, lonely))
+    lines = lines_of(state, lonely)
 
-    assert isinstance(intent, Speak)
-    assert not any(player.name in intent.speech for player in state.players), (
-        "there is nobody left to name"
-    )
+    assert lines, "it still finds something to say"
+    for line in lines:
+        assert not any(player.name in line for player in state.players), (
+            "there is nobody left to name"
+        )
 
 
 def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() -> None:
     """A line joins the shared transcript: it is read on screen, and by the models (J7)."""
     state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
     speaker = state.living[0]
+    others = [other for other in state.players if other.id != speaker.id]
 
-    intent = RandomAgent(rng=create_rng(1)).decide(project(state, speaker.id))
+    lines = lines_of(state, speaker.id)
 
-    assert isinstance(intent, Speak)
-    assert any(other.name in intent.speech for other in state.players if other.id != speaker.id), (
-        "somebody is named"
-    )
-    assert not any(other.id in intent.speech for other in state.players), (
-        "and never by an internal identifier"
-    )
+    assert any(other.name in line for line in lines for other in others), "somebody gets named"
+    for line in lines:
+        assert not any(other.id in line for other in state.players), (
+            "and never by an internal identifier"
+        )
 
 
 def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:

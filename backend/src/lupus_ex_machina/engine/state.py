@@ -77,6 +77,16 @@ class Speech(BaseModel):
     accused: PlayerId | None = None
 
 
+def count_words(speech: str) -> int:
+    """How much room a turn took up, in words.
+
+    Lives here, with the field it fills in, so the runner and the replay of a
+    journal cannot end up counting differently — the quota that reads it (D-002)
+    would then depend on which of the two built the state.
+    """
+    return len(speech.split())
+
+
 class PriorityShare(BaseModel):
     """One wolf's spread of the night's budget over the prey (D-008)."""
 

@@ -12,12 +12,13 @@ from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.events import NightPowerUsed, PriorityShared, ShotFired
 from lupus_ex_machina.engine.intents import (
-    CastVote,
     Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
     SharePriority,
+    TakeTurn,
+    Vote,
     Wait,
 )
 from lupus_ex_machina.engine.journal import Journal
@@ -50,8 +51,8 @@ class HuntsFirst:
                     PriorityPoint(target=view.action_targets[0], points=view.priority_budget),
                 )
             )
-        if IntentKind.VOTE in view.allowed_intents:
-            return CastVote()
+        if view.may_vote:
+            return TakeTurn(vote=Vote())
         return Wait()
 
 
@@ -66,8 +67,8 @@ class AimsAt:
         """Shoot the named player, otherwise vote blank or wait."""
         if RoleActionName.SHOOT in view.available_actions and self._target in view.action_targets:
             return RoleAction(action=RoleActionName.SHOOT, target=self._target)
-        if IntentKind.VOTE in view.allowed_intents:
-            return CastVote()
+        if view.may_vote:
+            return TakeTurn(vote=Vote())
         return Wait()
 
 

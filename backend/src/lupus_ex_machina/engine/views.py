@@ -18,13 +18,13 @@ from pydantic import BaseModel, ConfigDict
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
     PRIORITY_BUDGET,
-    CastVote,
     Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
     SharePriority,
-    Speak,
+    TakeTurn,
+    Vote,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
@@ -66,6 +66,15 @@ class PlayerView(BaseModel):
     voters: tuple[PlayerId, ...] = ()
     has_voted: bool = False
     allowed_intents: tuple[IntentKind, ...] = ()
+    may_speak: bool = False
+    """Whether this player still holds the floor (D-013)."""
+    may_vote: bool = False
+    """Whether this player may still cast a ballot this round (D-024).
+
+    Told apart from :attr:`may_speak` because one turn can do either, both, or
+    neither (D-028): the kind of intent alone would not say which halves of it
+    the rules would take.
+    """
     vote_targets: tuple[PlayerId, ...] = ()
     action_targets: tuple[PlayerId, ...] = ()
     available_actions: tuple[RoleActionName, ...] = ()
@@ -90,6 +99,8 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
     """
     actions = _available_actions(state, viewer)
     designating = _may_designate(state, viewer)
+    speaking = _accepted(state, viewer, TakeTurn(speech="Je vous écoute."))
+    voting = _accepted(state, viewer, TakeTurn(vote=Vote()))
 
     return PlayerView(
         self_id=viewer,
@@ -103,7 +114,11 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         allies=_allies_of(state, viewer),
         voters=tuple(ballot.voter for ballot in state.ballots),
         has_voted=state.has_voted(viewer),
-        allowed_intents=_allowed_intents(state, viewer, actions, designating=designating),
+        allowed_intents=_allowed_intents(
+            state, viewer, actions, designating=designating, taking_a_turn=speaking or voting
+        ),
+        may_speak=speaking,
+        may_vote=voting,
         vote_targets=_vote_targets(state, viewer),
         action_targets=_action_targets(state, viewer, actions, designating=designating),
         available_actions=actions,
@@ -147,22 +162,21 @@ def _allowed_intents(
     actions: tuple[RoleActionName, ...],
     *,
     designating: bool,
+    taking_a_turn: bool,
 ) -> tuple[IntentKind, ...]:
     """The moves the validator would accept, asked one by one.
 
     Every kind is put to the validator on a move that stands for it, so the view
     is the acceptance rather than a description of it. That is the one class of
     bug this projection can produce, and it is worth spending a few calls on.
+
+    Which *halves* of a turn are open is said by :attr:`PlayerView.may_speak`
+    and :attr:`PlayerView.may_vote`: one kind covers all three shapes a turn
+    can take (D-028), so the kind alone would not be enough to act on.
     """
-    offered = [
-        kind
-        for kind, probe in (
-            (IntentKind.SPEAK, Speak(speech="Je vous écoute.")),
-            (IntentKind.VOTE, CastVote()),
-            (IntentKind.WAIT, Wait()),
-        )
-        if _accepted(state, viewer, probe)
-    ]
+    offered = [IntentKind.WAIT] if _accepted(state, viewer, Wait()) else []
+    if taking_a_turn:
+        offered.append(IntentKind.TAKE_TURN)
 
     if designating:
         offered.append(IntentKind.SHARE_PRIORITY)

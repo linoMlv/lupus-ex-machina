@@ -12,7 +12,7 @@ French, because they are content shown on screen or sent to a model (HR-6).
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import RoleActionName
@@ -21,8 +21,7 @@ from lupus_ex_machina.engine.roles import RoleActionName
 class IntentKind(StrEnum):
     """Discriminator of the intent union."""
 
-    SPEAK = "speak"
-    VOTE = "vote"
+    TAKE_TURN = "take_turn"
     WAIT = "wait"
     ROLE_ACTION = "role_action"
     SHARE_PRIORITY = "share_priority"
@@ -34,17 +33,11 @@ class _BaseIntent(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
-class Speak(_BaseIntent):
-    """Take the floor publicly."""
+class Vote(BaseModel):
+    """Whom a player names for elimination, or nobody (D-027)."""
 
-    kind: Literal[IntentKind.SPEAK] = IntentKind.SPEAK
-    speech: str = Field(min_length=1, description="Ce que tu dis publiquement.")
+    model_config = ConfigDict(frozen=True)
 
-
-class CastVote(_BaseIntent):
-    """Vote, which also gives up the right to speak for the round (D-013)."""
-
-    kind: Literal[IntentKind.VOTE] = IntentKind.VOTE
     target: PlayerId | None = Field(
         default=None,
         description="Le joueur que tu veux éliminer, ou rien pour voter blanc.",
@@ -54,6 +47,46 @@ class CastVote(_BaseIntent):
     def is_blank(self) -> bool:
         """Whether the voter skips rather than naming someone (D-027)."""
         return self.target is None
+
+
+class TakeTurn(_BaseIntent):
+    """What a player does with the turn they won (D-013, D-028).
+
+    One intent with optional parts rather than three, because the rules give a
+    turn three ways to go: speak and leave the round open, speak *and* vote —
+    the last turn a player may speak in — or vote without a word. Three types
+    would duplicate the validation and the recording of what is one move.
+
+    Whom the speaker is talking to and whom they accuse are declared, not read
+    out of their words: the auction pays for both (D-002), and digging them out
+    of French prose would put a parser of French in the middle of the rules.
+    """
+
+    kind: Literal[IntentKind.TAKE_TURN] = IntentKind.TAKE_TURN
+    speech: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Ce que tu dis publiquement, ou rien si tu prends la parole pour voter.",
+    )
+    addressed: PlayerId | None = Field(
+        default=None,
+        description="Le joueur à qui tu t'adresses, si tu t'adresses à quelqu'un en particulier.",
+    )
+    accused: PlayerId | None = Field(
+        default=None,
+        description="Le joueur que tu accuses d'être un loup-garou, si tu en accuses un.",
+    )
+    vote: Vote | None = Field(
+        default=None,
+        description="Ton vote, ou rien pour garder ton droit de parole ce tour-ci.",
+    )
+
+    @model_validator(mode="after")
+    def _says_or_does_something(self) -> "TakeTurn":
+        """A turn that neither speaks nor votes is :class:`Wait` under another name."""
+        if self.speech is None and self.vote is None:
+            raise ValueError("A turn either speaks, votes, or both")
+        return self
 
 
 class Wait(_BaseIntent):
@@ -112,6 +145,4 @@ class SharePriority(_BaseIntent):
         return sum(abs(allocation.points) for allocation in self.allocations)
 
 
-Intent = Annotated[
-    Speak | CastVote | Wait | RoleAction | SharePriority, Field(discriminator="kind")
-]
+Intent = Annotated[TakeTurn | Wait | RoleAction | SharePriority, Field(discriminator="kind")]

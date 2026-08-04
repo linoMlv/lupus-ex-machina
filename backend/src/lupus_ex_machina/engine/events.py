@@ -139,10 +139,18 @@ class SpeechDelivered(Fact):
     kind: Literal[EventKind.SPEECH_DELIVERED] = EventKind.SPEECH_DELIVERED
     speaker: PlayerId
     speech: str = Field(min_length=1)
+    addressed: PlayerId | None = None
+    accused: PlayerId | None = None
 
     @property
     def audience(self) -> Visibility:
-        """Public: this is the shared transcript."""
+        """Public: this is the shared transcript.
+
+        Whom the speaker addressed and accused is public with it. They said it
+        out loud — hiding the structure of a sentence everyone heard would be
+        hiding nothing, and the auction that pays for it (D-002) has to be
+        replayable from the journal.
+        """
         return Visibility.public()
 
 

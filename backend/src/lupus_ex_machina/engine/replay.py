@@ -46,7 +46,7 @@ from lupus_ex_machina.engine.events import (
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.state import GameState, count_words
 
 
 class JournalReplayError(EngineError):
@@ -111,6 +111,13 @@ class _Replay:
                 self._state = self._running().with_priority_share_from(
                     spread.actor, spread.allocations
                 )
+            case SpeechDelivered() as speech:
+                self._state = self._running().with_speech_from(
+                    speech.speaker,
+                    words=count_words(speech.speech),
+                    addressed=speech.addressed,
+                    accused=speech.accused,
+                )
             case RunoffOpened() as runoff:
                 self._state = self._running().reopened_for_runoff(runoff.targets)
             case VoteResolved() as vote:
@@ -119,7 +126,6 @@ class _Replay:
                 self._close_round(night.victims)
             case (
                 PackRevealed()
-                | SpeechDelivered()
                 | PackSpeechDelivered()
                 | SeerInspected()
                 | SeerFindingAnnounced()

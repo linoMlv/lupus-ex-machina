@@ -37,7 +37,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.replay import JournalReplayError, replay
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.state import GameState, Speech
 from lupus_ex_machina.engine.victory import Outcome
 
 WOLF = Player(id=PlayerId("p0"), name="Adèle", seat=0, role=RoleName.WEREWOLF)
@@ -150,12 +150,31 @@ def test_a_tie_that_spared_everyone_replays_as_such() -> None:
     assert len(rebuilt.living) == len(TABLE)
 
 
+def test_a_replayed_turn_at_the_floor_is_given_back_to_the_round() -> None:
+    """A replayed round gets its turns at the floor back.
+
+    The auction is scored against them (D-002). Rebuilt without them, a game
+    would arbitrate differently from the one it claims to be replaying.
+    """
+    recorder = Recorder().enter(Phase.DAY, day=2)
+    recorder.write(
+        SpeechDelivered(
+            speaker=WOLF.id, speech="Camille, tu mens.", addressed=VILLAGER.id, accused=VILLAGER.id
+        )
+    )
+
+    rebuilt = replay(recorder.journal.events)
+
+    assert rebuilt.floor == (
+        Speech(speaker=WOLF.id, words=3, addressed=VILLAGER.id, accused=VILLAGER.id),
+    )
+
+
 def test_facts_that_change_nothing_leave_the_state_alone() -> None:
-    """Speech, thoughts and announcements are information, not effects."""
+    """Thoughts and announcements are information, not effects."""
     recorder = Recorder().enter(Phase.DAY, day=2)
     plain = replay(recorder.journal.events)
 
-    recorder.write(SpeechDelivered(speaker=WOLF.id, speech="Je vous écoute."))
     recorder.write(BallotAnnounced(voter=WOLF.id))
     recorder.write(RoleRevealed(player=VILLAGER.id, role=RoleName.VILLAGER))
     recorder.write(IntentRejected(actor=WOLF.id, reason="already voted"))

@@ -51,11 +51,10 @@ from lupus_ex_machina.engine.events import (
 )
 from lupus_ex_machina.engine.hunter import hunters_owing_a_shot, someone_to_take_along
 from lupus_ex_machina.engine.intents import (
-    CastVote,
     Intent,
     RoleAction,
     SharePriority,
-    Speak,
+    TakeTurn,
     Wait,
 )
 from lupus_ex_machina.engine.journal import Journal
@@ -73,7 +72,7 @@ from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, Team
-from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.state import GameState, count_words
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
 from lupus_ex_machina.engine.views import project
@@ -419,16 +418,13 @@ class _Run:
             return state
 
         match intent:
-            case CastVote():
-                return self._cast(state, actor, intent.target)
+            case TakeTurn():
+                return self._play_turn(state, actor, intent)
             case SharePriority():
                 state = state.with_priority_share_from(actor, intent.allocations)
                 self._journal.record(
                     PriorityShared(actor=actor, allocations=intent.allocations), at=state
                 )
-                return state
-            case Speak():
-                self._journal.record(self._speech_of(state, actor, intent.speech), at=state)
                 return state
             case RoleAction():
                 state = state.with_night_choice_from(actor, intent.action, intent.target)
@@ -445,7 +441,42 @@ class _Run:
             case _:  # pragma: no cover - the union is closed, mypy proves this is dead
                 assert_never(intent)
 
-    def _speech_of(self, state: GameState, speaker: PlayerId, speech: str) -> EventPayload:
+    def _play_turn(self, state: GameState, actor: PlayerId, turn: TakeTurn) -> GameState:
+        """Apply a turn: what was said first, then what was cast (D-051).
+
+        The order is a rule of the game, not a detail of this method. A player
+        may speak in the very turn they vote in but never after (D-028), and the
+        table is told someone has voted only once they have had their say —
+        otherwise the announcement would arrive before the words that explain it.
+        """
+        if (speech := turn.speech) is not None:
+            state = self._say(state, actor, speech, turn)
+        if turn.vote is not None:
+            state = self._cast(state, actor, turn.vote.target)
+        return state
+
+    def _say(self, state: GameState, speaker: PlayerId, speech: str, turn: TakeTurn) -> GameState:
+        """Record a turn at the floor, and remember the round had it.
+
+        The journal keeps the words; the state keeps only what the next auction
+        is scored against (D-002). The pack's own channel leaves no such trace:
+        the night has no auction to score, and a round of it is short by design
+        (D-007).
+        """
+        self._journal.record(self._speech_of(state, speaker, speech, turn), at=state)
+        if state.phase is Phase.NIGHT:
+            return state
+
+        return state.with_speech_from(
+            speaker,
+            words=count_words(speech),
+            addressed=turn.addressed,
+            accused=turn.accused,
+        )
+
+    def _speech_of(
+        self, state: GameState, speaker: PlayerId, speech: str, turn: TakeTurn
+    ) -> EventPayload:
         """Route a line to the floor it was spoken on.
 
         The pack has its own channel at night (D-007), and what is said there is
@@ -453,7 +484,9 @@ class _Run:
         """
         if state.phase is Phase.NIGHT:
             return PackSpeechDelivered(speaker=speaker, speech=speech)
-        return SpeechDelivered(speaker=speaker, speech=speech)
+        return SpeechDelivered(
+            speaker=speaker, speech=speech, addressed=turn.addressed, accused=turn.accused
+        )
 
     def _cast(self, state: GameState, voter: PlayerId, target: PlayerId | None = None) -> GameState:
         """Record a vote. The only way a ballot enters the game.
