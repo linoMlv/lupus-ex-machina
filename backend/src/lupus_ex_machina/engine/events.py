@@ -44,6 +44,7 @@ class EventKind(StrEnum):
     BALLOT_ANNOUNCED = "ballot_announced"
     NIGHT_POWER_USED = "night_power_used"
     POWER_SPENT = "power_spent"
+    SHOT_FIRED = "shot_fired"
     SEER_INSPECTED = "seer_inspected"
     SEER_FINDING_ANNOUNCED = "seer_finding_announced"
     PRIORITY_SHARED = "priority_shared"
@@ -193,6 +194,25 @@ class NightPowerUsed(Fact):
     def audience(self) -> Visibility:
         """Its author: a power used in the dark is nobody else's business."""
         return Visibility.for_player(self.actor)
+
+
+class ShotFired(Fact):
+    """A hunter took someone along as he died (D-030).
+
+    Public, and loudly so: the shot is fired by day and in front of everyone,
+    which is half of what makes the role worth playing.
+    """
+
+    kind: Literal[EventKind.SHOT_FIRED] = EventKind.SHOT_FIRED
+    hunter: PlayerId
+    target: PlayerId
+    chosen_by_the_hunter: bool
+    """False when the hunter would not aim and the engine aimed for him (D-055)."""
+
+    @property
+    def audience(self) -> Visibility:
+        """Public."""
+        return Visibility.public()
 
 
 class PowerSpent(Fact):
@@ -405,6 +425,7 @@ EventPayload = Annotated[
     | BallotAnnounced
     | NightPowerUsed
     | PowerSpent
+    | ShotFired
     | SeerInspected
     | SeerFindingAnnounced
     | PriorityShared

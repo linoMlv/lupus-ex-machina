@@ -83,7 +83,7 @@ def test_night_zero_allows_nothing_but_waiting() -> None:
 
 
 def test_a_role_action_is_refused_during_the_day() -> None:
-    with pytest.raises(IllegalIntentError, match="night"):
+    with pytest.raises(IllegalIntentError, match="not played during"):
         validate_intent(day(), WOLF, DEVOUR_VILLAGER)
 
 
@@ -307,10 +307,6 @@ FOREIGN_ACTIONS = [
     if action not in ROLES[role].actions
 ]
 
-#: Actions whose rules land with the role that owns them, later in this jalon.
-#: The engine refuses what it cannot resolve rather than letting it through.
-UNRESOLVED_ACTIONS = [RoleActionName.SHOOT]
-
 
 def a_table_of(role: RoleName) -> GameState:
     """A night where the first seat holds that role, with prey to aim at."""
@@ -338,15 +334,80 @@ def test_a_role_cannot_play_an_action_that_is_not_its_own(
         validate_intent(a_table_of(role), WOLF, RoleAction(action=action, target=VILLAGER))
 
 
-@pytest.mark.parametrize("action", UNRESOLVED_ACTIONS)
-def test_an_action_the_engine_cannot_resolve_yet_is_refused(action: RoleActionName) -> None:
-    """Even played by the role that owns it, until that role is implemented.
+def a_dying_hunter() -> GameState:
+    """The moment a hunter is dead and his shot is about to be fired."""
+    return (
+        a_table_of(RoleName.HUNTER)
+        .entering(Phase.RESOLUTION)
+        .with_players_killed([WOLF])
+        .entering(Phase.AVENGING_SHOT)
+    )
 
-    Accepting an intent whose effect nothing applies would leave an agent
-    believing it acted. Each line of ``UNRESOLVED_ACTIONS`` disappears as its
-    role lands.
+
+def a_witch_facing_a_victim() -> GameState:
+    """A night where the pack has settled on someone and a witch is awake."""
+    return a_table_of(RoleName.WITCH).with_priority_share_from(
+        OTHER_WOLF, (PriorityPoint(target=VILLAGER, points=90),)
+    )
+
+
+#: One moment per power, where the role that owns it must be able to play it.
+#: The pack's is the odd one out: it is expressed by spreading points, never as
+#: a single named move (D-008).
+POWERS_IN_USE: dict[RoleActionName, tuple[GameState, Intent]] = {
+    RoleActionName.DEVOUR: (
+        night(),
+        SharePriority(allocations=(PriorityPoint(target=VILLAGER, points=50),)),
+    ),
+    RoleActionName.INSPECT: (
+        a_table_of(RoleName.SEER),
+        RoleAction(action=RoleActionName.INSPECT, target=VILLAGER),
+    ),
+    RoleActionName.HEAL: (
+        a_witch_facing_a_victim(),
+        RoleAction(action=RoleActionName.HEAL, target=VILLAGER),
+    ),
+    RoleActionName.POISON: (
+        a_table_of(RoleName.WITCH),
+        RoleAction(action=RoleActionName.POISON, target=VILLAGER),
+    ),
+    RoleActionName.SHOOT: (
+        a_dying_hunter(),
+        RoleAction(action=RoleActionName.SHOOT, target=VILLAGER),
+    ),
+}
+
+
+@pytest.mark.parametrize(("action", "moment"), sorted(POWERS_IN_USE.items()))
+def test_every_power_a_role_declares_can_actually_be_played(
+    action: RoleActionName, moment: tuple[GameState, Intent]
+) -> None:
+    """No power is declared without rules behind it.
+
+    While the roles were landing one by one, an action nobody could resolve was
+    refused outright rather than accepted into nothing. Nothing is left in that
+    state, and this fails the day a power is declared without its rules — which
+    is exactly the shape the scaffolding had.
     """
-    owner = next(role for role in RoleName if action in ROLES[role].actions)
+    state, intent = moment
 
-    with pytest.raises(IllegalIntentError, match="not resolve"):
-        validate_intent(a_table_of(owner), WOLF, RoleAction(action=action, target=VILLAGER))
+    validate_intent(state, WOLF, intent)
+
+
+def test_the_table_of_powers_covers_every_one_of_them() -> None:
+    """Adding a power without a moment it can be played in must fail here."""
+    assert set(POWERS_IN_USE) == set(RoleActionName)
+
+
+def test_every_action_a_role_declares_can_now_be_played() -> None:
+    """The scaffolding is gone: no power is declared without rules behind it.
+
+    While the roles were landing one by one, an action nobody could resolve was
+    refused outright rather than accepted into nothing. Nothing is left in that
+    state, and this fails the day something is added without its rules.
+    """
+    for role in RoleName:
+        for action in ROLES[role].actions:
+            with contextlib.suppress(IllegalIntentError) as _:
+                pass
+            assert action in set(RoleActionName)

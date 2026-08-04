@@ -26,6 +26,9 @@ EXPECTED_TRANSITIONS = {
     (Phase.RESOLUTION, Phase.DAY),
     (Phase.RESOLUTION, Phase.NIGHT),
     (Phase.RESOLUTION, Phase.ENDED),
+    # The hunter fires as he dies, before the victory is looked at (D-030, D-049).
+    (Phase.RESOLUTION, Phase.AVENGING_SHOT),
+    (Phase.AVENGING_SHOT, Phase.RESOLUTION),
 }
 
 

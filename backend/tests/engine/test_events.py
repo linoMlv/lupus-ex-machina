@@ -38,6 +38,7 @@ from lupus_ex_machina.engine.events import (
     RunoffOpened,
     SeerFindingAnnounced,
     SeerInspected,
+    ShotFired,
     SpeechDelivered,
     VoteResolved,
 )
@@ -78,6 +79,7 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         NightPowerUsed(actor=SEER, action=RoleActionName.INSPECT, target=WOLF),
         Visibility.for_player(SEER),
     ),
+    (ShotFired(hunter=WOLF, target=VILLAGER, chosen_by_the_hunter=True), Visibility.public()),
     (
         PowerSpent(actor=WOLF, action=RoleActionName.POISON),
         Visibility.for_player(WOLF),

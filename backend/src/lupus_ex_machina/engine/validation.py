@@ -13,6 +13,7 @@ game, not an exceptional path.
 from typing import assert_never
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
+from lupus_ex_machina.engine.hunter import hunters_owing_a_shot
 from lupus_ex_machina.engine.intents import (
     PRIORITY_BUDGET,
     CastVote,
@@ -33,7 +34,7 @@ from lupus_ex_machina.engine.state import GameState
 # may be named yet and a blank vote is the only way out (D-032).
 BOOTSTRAP_DAY = 1
 
-ACTIONABLE_PHASES = frozenset({Phase.NIGHT_ZERO, Phase.DAY, Phase.NIGHT})
+ACTIONABLE_PHASES = frozenset({Phase.NIGHT_ZERO, Phase.DAY, Phase.NIGHT, Phase.AVENGING_SHOT})
 
 
 def validate_intent(state: GameState, actor: PlayerId, intent: Intent) -> None:
@@ -59,11 +60,16 @@ def validate_intent(state: GameState, actor: PlayerId, intent: Intent) -> None:
 
 
 def _ensure_actor_may_act(state: GameState, actor: PlayerId) -> None:
+    """Only the living act — with one exception, and it is the whole point of it.
+
+    A hunter fires as he dies (D-030). His shot is the single move the rules
+    accept from a dead player, and it is accepted nowhere but in its own phase.
+    """
     _ensure_known(state, actor)
-    if not state.is_alive(actor):
-        raise IllegalIntentError(f"Player {actor} is dead and cannot act")
     if state.phase not in ACTIONABLE_PHASES:
         raise IllegalIntentError(f"No intent is accepted during phase {state.phase}")
+    if not state.is_alive(actor) and actor not in {owed.id for owed in hunters_owing_a_shot(state)}:
+        raise IllegalIntentError(f"Player {actor} is dead and cannot act")
 
 
 def _ensure_known(state: GameState, player: PlayerId) -> None:
@@ -125,9 +131,10 @@ def _validate_vote(state: GameState, actor: PlayerId, intent: CastVote) -> None:
 
 
 def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction) -> None:
-    if state.phase is not Phase.NIGHT:
-        raise IllegalIntentError("Role actions are only allowed at night")
     _ensure_the_role_owns_the_action(state, actor, intent.action)
+    expected = Phase.AVENGING_SHOT if intent.action is RoleActionName.SHOOT else Phase.NIGHT
+    if state.phase is not expected:
+        raise IllegalIntentError(f"{intent.action} is not played during phase {state.phase}")
 
     match intent.action:
         case RoleActionName.DEVOUR:
@@ -141,7 +148,7 @@ def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction)
         case RoleActionName.POISON:
             _validate_poisoning(state, actor, intent.target)
         case RoleActionName.SHOOT:
-            raise IllegalIntentError(f"The engine does not resolve {intent.action} yet")
+            _validate_the_shot(state, actor, intent.target)
         case _:  # pragma: no cover - the enum is closed, mypy proves this is dead
             assert_never(intent.action)
 
@@ -199,6 +206,16 @@ def _ensure_the_potion_is_still_full(
         raise IllegalIntentError(f"Player {actor} has already used a potion tonight")
     if state.has_spent(actor, potion):
         raise IllegalIntentError(f"Player {actor} has no {potion} potion left")
+
+
+def _validate_the_shot(state: GameState, actor: PlayerId, target: PlayerId) -> None:
+    """The hunter takes one living player along, never himself (D-030)."""
+    if actor not in {owed.id for owed in hunters_owing_a_shot(state)}:
+        raise IllegalIntentError(f"Player {actor} has no shot to fire")
+    if target == actor:
+        raise IllegalIntentError(f"Player {actor} does not shoot themselves")
+
+    _ensure_alive_target(state, target)
 
 
 def _validate_priority_share(state: GameState, actor: PlayerId, intent: SharePriority) -> None:

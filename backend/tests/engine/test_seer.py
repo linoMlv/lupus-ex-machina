@@ -97,7 +97,7 @@ def test_nobody_but_the_seer_may_look() -> None:
 def test_the_seer_only_looks_at_night() -> None:
     day = GameState.initial(TABLE).entering(Phase.DAY, day=2)
 
-    with pytest.raises(IllegalIntentError, match="night"):
+    with pytest.raises(IllegalIntentError, match="not played during"):
         validate_intent(day, SEER, inspect(WOLF))
 
 

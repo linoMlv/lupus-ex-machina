@@ -23,6 +23,7 @@ from lupus_ex_machina.engine.events import (
     PlayerSeated,
     RoleAssigned,
     RoleRevealed,
+    ShotFired,
     SpeechDelivered,
     VoteResolved,
 )
@@ -128,9 +129,11 @@ def test_every_death_is_written_down() -> None:
     result = play(seed=1)
     dead = {player.id for player in result.state.players if not player.alive}
 
-    recorded = {vote.eliminated for vote in facts_of(result, VoteResolved)} | {
-        victim for night in facts_of(result, NightResolved) for victim in night.victims
-    }
+    recorded = (
+        {vote.eliminated for vote in facts_of(result, VoteResolved)}
+        | {victim for night in facts_of(result, NightResolved) for victim in night.victims}
+        | {shot.target for shot in facts_of(result, ShotFired)}
+    )
 
     assert dead <= {victim for victim in recorded if victim is not None}
 

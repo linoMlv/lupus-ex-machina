@@ -39,6 +39,7 @@ from lupus_ex_machina.engine.events import (
     RunoffOpened,
     SeerFindingAnnounced,
     SeerInspected,
+    ShotFired,
     SpeechDelivered,
     VoteResolved,
 )
@@ -102,6 +103,8 @@ class _Replay:
                 self._state = self._running().with_night_choice_from(
                     used.actor, used.action, used.target
                 )
+            case ShotFired() as fired:
+                self._state = self._running().with_players_killed([fired.target])
             case PowerSpent() as spent:
                 self._state = self._running().with_power_spent_by(spent.actor, spent.action)
             case PriorityShared() as spread:

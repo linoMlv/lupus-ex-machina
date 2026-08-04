@@ -18,26 +18,22 @@ from pydantic import BaseModel, ConfigDict
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
     PRIORITY_BUDGET,
+    CastVote,
     Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
     SharePriority,
+    Speak,
+    Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import (
-    ACTIONABLE_PHASES,
     BOOTSTRAP_DAY,
     validate_intent,
-)
-
-#: Single-target powers the engine can settle today. Each entry disappears from
-#: this list by being implemented, not by being removed from a role (J4.6).
-RESOLVED_NIGHT_ACTIONS = frozenset(
-    {RoleActionName.INSPECT, RoleActionName.HEAL, RoleActionName.POISON}
 )
 
 
@@ -71,9 +67,9 @@ class PlayerView(BaseModel):
     has_voted: bool = False
     allowed_intents: tuple[IntentKind, ...] = ()
     vote_targets: tuple[PlayerId, ...] = ()
-    night_targets: tuple[PlayerId, ...] = ()
-    night_actions: tuple[RoleActionName, ...] = ()
-    """Powers this player may use tonight, empty when they have none left."""
+    action_targets: tuple[PlayerId, ...] = ()
+    available_actions: tuple[RoleActionName, ...] = ()
+    """Powers this player may use right now, empty when they have none."""
     priority_budget: int = 0
     """Points this player may spread over the prey tonight, zero when they may not."""
 
@@ -86,7 +82,15 @@ class PlayerView(BaseModel):
 
 
 def project(state: GameState, viewer: PlayerId) -> PlayerView:
-    """Build what ``viewer`` is allowed to know about the current state."""
+    """Build what ``viewer`` is allowed to know about the current state.
+
+    The legal moves are settled by putting candidates to the validator, so each
+    answer is worked out once here and handed down rather than recomputed by
+    every field that needs it.
+    """
+    actions = _available_actions(state, viewer)
+    designating = _may_designate(state, viewer)
+
     return PlayerView(
         self_id=viewer,
         role=state.player(viewer).role,
@@ -99,11 +103,11 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         allies=_allies_of(state, viewer),
         voters=tuple(ballot.voter for ballot in state.ballots),
         has_voted=state.has_voted(viewer),
-        allowed_intents=_allowed_intents(state, viewer),
+        allowed_intents=_allowed_intents(state, viewer, actions, designating=designating),
         vote_targets=_vote_targets(state, viewer),
-        night_targets=_night_targets(state, viewer),
-        night_actions=_night_actions(state, viewer),
-        priority_budget=PRIORITY_BUDGET if _may_designate(state, viewer) else 0,
+        action_targets=_action_targets(state, viewer, actions, designating=designating),
+        available_actions=actions,
+        priority_budget=PRIORITY_BUDGET if designating else 0,
     )
 
 
@@ -119,67 +123,13 @@ def _allies_of(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
 
 
 def _may_act(state: GameState, viewer: PlayerId) -> bool:
-    """Whether the validator would accept anything at all from this player.
+    """Whether the rules would take anything at all from this player right now.
 
-    The dead and the phases the engine resolves on its own offer no move. A view
-    is built for them all the same — a dead player keeps watching the game — so
-    it must say so rather than offer moves that would be refused.
+    Asked of the validator rather than restated: the dead usually have no move,
+    except for the hunter who owes a shot, and a second description of that
+    exception is a second place to get it wrong.
     """
-    return state.is_alive(viewer) and state.phase in ACTIONABLE_PHASES
-
-
-def _allowed_intents(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ...]:
-    """List the moves the validator would accept right now."""
-    if not _may_act(state, viewer):
-        return ()
-
-    if state.phase is Phase.DAY:
-        if state.has_voted(viewer):
-            return (IntentKind.WAIT,)
-        return (IntentKind.SPEAK, IntentKind.VOTE, IntentKind.WAIT)
-
-    if state.phase is Phase.NIGHT:
-        return _allowed_at_night(state, viewer)
-
-    return (IntentKind.WAIT,)
-
-
-def _allowed_at_night(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ...]:
-    """The pack has a floor and a vote; the other powers have a single move."""
-    if state.player(viewer).team is Team.WEREWOLVES:
-        # The pack keeps its own floor all night (D-007), and may spread its
-        # points once (D-008).
-        if _may_designate(state, viewer):
-            return (IntentKind.SPEAK, IntentKind.SHARE_PRIORITY, IntentKind.WAIT)
-        return (IntentKind.SPEAK, IntentKind.WAIT)
-
-    if _night_actions(state, viewer):
-        return (IntentKind.ROLE_ACTION, IntentKind.WAIT)
-    return (IntentKind.WAIT,)
-
-
-def _night_actions(state: GameState, viewer: PlayerId) -> tuple[RoleActionName, ...]:
-    """Single-target powers this player may still use tonight.
-
-    Candidates come from the registry, so a role gains its move by being
-    declared (D-010); which of them survive is settled by putting each to the
-    validator. The offer is therefore the acceptance, rather than a second
-    statement of it that could drift.
-    """
-    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
-        return ()
-
-    role = ROLES[state.player(viewer).role]
-    return tuple(
-        sorted(
-            action
-            for action in role.actions & RESOLVED_NIGHT_ACTIONS
-            if any(
-                _accepted(state, viewer, RoleAction(action=action, target=candidate.id))
-                for candidate in state.living
-            )
-        )
-    )
+    return _accepted(state, viewer, Wait()) or bool(_available_actions(state, viewer))
 
 
 def _accepted(state: GameState, viewer: PlayerId, intent: Intent) -> bool:
@@ -191,13 +141,99 @@ def _accepted(state: GameState, viewer: PlayerId, intent: Intent) -> bool:
     return True
 
 
+def _allowed_intents(
+    state: GameState,
+    viewer: PlayerId,
+    actions: tuple[RoleActionName, ...],
+    *,
+    designating: bool,
+) -> tuple[IntentKind, ...]:
+    """The moves the validator would accept, asked one by one.
+
+    Every kind is put to the validator on a move that stands for it, so the view
+    is the acceptance rather than a description of it. That is the one class of
+    bug this projection can produce, and it is worth spending a few calls on.
+    """
+    offered = [
+        kind
+        for kind, probe in (
+            (IntentKind.SPEAK, Speak(speech="Je vous écoute.")),
+            (IntentKind.VOTE, CastVote()),
+            (IntentKind.WAIT, Wait()),
+        )
+        if _accepted(state, viewer, probe)
+    ]
+
+    if designating:
+        offered.append(IntentKind.SHARE_PRIORITY)
+    if actions:
+        offered.append(IntentKind.ROLE_ACTION)
+
+    return tuple(sorted(offered))
+
+
 def _may_designate(state: GameState, viewer: PlayerId) -> bool:
-    """Whether this player may still weigh the prey tonight."""
-    return (
-        _may_act(state, viewer)
-        and state.phase is Phase.NIGHT
-        and state.player(viewer).team is Team.WEREWOLVES
-        and not state.has_acted_tonight(viewer)
+    """Whether this player may still weigh the prey tonight (D-008)."""
+    return any(
+        _accepted(
+            state,
+            viewer,
+            SharePriority(allocations=(PriorityPoint(target=candidate.id, points=1),)),
+        )
+        for candidate in state.living
+    )
+
+
+def _available_actions(state: GameState, viewer: PlayerId) -> tuple[RoleActionName, ...]:
+    """Single-target powers this player may use right now.
+
+    Candidates come from the registry, so a role gains its move by being
+    declared (D-010); which of them survive is settled by putting each to the
+    validator, phase and all.
+    """
+    role = ROLES[state.player(viewer).role]
+    return tuple(
+        sorted(
+            action
+            for action in role.actions
+            if any(
+                _accepted(state, viewer, RoleAction(action=action, target=candidate.id))
+                for candidate in state.living
+            )
+        )
+    )
+
+
+def _action_targets(
+    state: GameState,
+    viewer: PlayerId,
+    actions: tuple[RoleActionName, ...],
+    *,
+    designating: bool,
+) -> tuple[PlayerId, ...]:
+    """Whom this player may aim at right now, whichever of their powers they use.
+
+    A witch holding two potions sees the union of what each of them reaches —
+    the choice of potion is hers.
+    """
+    if not designating and not actions:
+        return ()
+
+    return tuple(
+        player.id
+        for player in state.living
+        if (
+            designating
+            and _accepted(
+                state,
+                viewer,
+                SharePriority(allocations=(PriorityPoint(target=player.id, points=1),)),
+            )
+        )
+        or any(
+            _accepted(state, viewer, RoleAction(action=action, target=player.id))
+            for action in actions
+        )
     )
 
 
@@ -212,33 +248,3 @@ def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
     if state.day == BOOTSTRAP_DAY or state.has_voted(viewer):
         return ()
     return tuple(player.id for player in state.living if player.id != viewer)
-
-
-def _night_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
-    """Whom this player may aim at tonight, whichever of their powers they use.
-
-    Every candidate is put to the validator, so a target is offered exactly when
-    some legal move can be played on it. A witch holding two potions sees the
-    union of what each of them reaches — the choice of potion is hers.
-    """
-    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
-        return ()
-
-    actions = _night_actions(state, viewer)
-    return tuple(
-        player.id
-        for player in state.living
-        if _reachable_tonight(state, viewer, player.id, actions)
-    )
-
-
-def _reachable_tonight(
-    state: GameState, viewer: PlayerId, target: PlayerId, actions: tuple[RoleActionName, ...]
-) -> bool:
-    if _may_designate(state, viewer):
-        return _accepted(
-            state, viewer, SharePriority(allocations=(PriorityPoint(target=target, points=1),))
-        )
-    return any(
-        _accepted(state, viewer, RoleAction(action=action, target=target)) for action in actions
-    )

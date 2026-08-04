@@ -45,9 +45,11 @@ from lupus_ex_machina.engine.events import (
     RunoffOpened,
     SeerFindingAnnounced,
     SeerInspected,
+    ShotFired,
     SpeechDelivered,
     VoteResolved,
 )
+from lupus_ex_machina.engine.hunter import hunters_owing_a_shot, someone_to_take_along
 from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
@@ -68,7 +70,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day
-from lupus_ex_machina.engine.roles import Team
+from lupus_ex_machina.engine.roles import RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
@@ -290,6 +292,7 @@ class _Run:
         state, victims = resolver(state)
         self._journal.record(announce(victims), at=state)
         self._reveal_the_roles_of(state, victims)
+        state = self._let_the_hunters_fire(state)
 
         outcome = evaluate_victory(state)
         if outcome is not None:
@@ -297,6 +300,67 @@ class _Run:
             self._journal.record(GameEnded(outcome=outcome), at=state)
             return state, outcome
         return state, None
+
+    def _let_the_hunters_fire(self, state: GameState) -> GameState:
+        """Fire every shot the round owes, before the victory is looked at (D-049).
+
+        This is the one place a death happens in the middle of a phase, and the
+        reason the whole thing is a loop: a hunter can take another hunter along.
+        Each of them fires once, so it always ends.
+        """
+        while owed := hunters_owing_a_shot(state):
+            hunter = owed[0]
+            state = self.enter(state, Phase.AVENGING_SHOT)
+            state = self._fire(state, hunter.id)
+            state = self.enter(state, Phase.RESOLUTION)
+        return state
+
+    def _fire(self, state: GameState, hunter: PlayerId) -> GameState:
+        """Take the hunter's aim, or the engine's when he will not give one."""
+        aimed = self._aim_of(state, hunter)
+        state = state.with_power_spent_by(hunter, RoleActionName.SHOOT)
+        self._journal.record(PowerSpent(actor=hunter, action=RoleActionName.SHOOT), at=state)
+        if aimed is None:
+            return state
+
+        target, chosen = aimed
+        state = state.with_players_killed([target])
+        self._journal.record(
+            ShotFired(hunter=hunter, target=target, chosen_by_the_hunter=chosen), at=state
+        )
+        self._reveal_the_roles_of(state, (target,))
+        return state
+
+    def _aim_of(self, state: GameState, hunter: PlayerId) -> tuple[PlayerId, bool] | None:
+        """Whom the shot takes, and whether the hunter is the one who said so."""
+        intent = self._ask(state, hunter)
+        if isinstance(intent, RoleAction) and self._accepts(state, hunter, intent):
+            return intent.target, True
+
+        self._refuse(state, hunter, intent)
+        if not self._policy.hunter_must_shoot:
+            return None
+
+        forced = someone_to_take_along(state, hunter)
+        if forced is None:  # pragma: no cover - a game ends before a hunter is the last alive
+            return None
+        return forced, False
+
+    def _accepts(self, state: GameState, actor: PlayerId, intent: Intent) -> bool:
+        try:
+            validate_intent(state, actor, intent)
+        except IllegalIntentError:
+            return False
+        return True
+
+    def _refuse(self, state: GameState, actor: PlayerId, intent: Intent) -> None:
+        """Count and record an intent the rules would not take."""
+        if isinstance(intent, Wait):
+            return
+        self._rejected += 1
+        self._journal.record(
+            IntentRejected(actor=actor, reason=f"{intent.kind} is not a shot"), at=state
+        )
 
     def _reveal_the_roles_of(self, state: GameState, victims: tuple[PlayerId, ...]) -> None:
         """Announce what the deceased were, when the configuration allows it (D-072).

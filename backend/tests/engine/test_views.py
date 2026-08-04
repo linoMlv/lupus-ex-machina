@@ -147,7 +147,7 @@ def test_a_wolf_is_told_how_many_points_it_may_spread() -> None:
 def test_a_wolf_is_never_offered_its_own_pack_as_prey() -> None:
     view = project(night(), WOLF)
 
-    assert set(view.night_targets) == {VILLAGER, OTHER_VILLAGER}
+    assert set(view.action_targets) == {VILLAGER, OTHER_VILLAGER}
 
 
 def test_a_wolf_that_already_spread_its_points_keeps_only_the_floor() -> None:
@@ -156,7 +156,7 @@ def test_a_wolf_that_already_spread_its_points_keeps_only_the_floor() -> None:
     view = project(state, WOLF)
 
     assert set(view.allowed_intents) == {IntentKind.SPEAK, IntentKind.WAIT}
-    assert view.night_targets == ()
+    assert view.action_targets == ()
     assert view.priority_budget == 0
 
 
@@ -207,7 +207,7 @@ def test_the_view_offers_exactly_the_targets_the_validator_accepts() -> None:
                 assert (other.id in view.vote_targets) == accepts(
                     state, actor.id, CastVote(target=other.id)
                 ), f"vote, {where}"
-                assert (other.id in view.night_targets) == accepts(
+                assert (other.id in view.action_targets) == accepts(
                     state,
                     actor.id,
                     SharePriority(allocations=(PriorityPoint(target=other.id, points=10),)),

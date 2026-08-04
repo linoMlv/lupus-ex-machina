@@ -4,7 +4,9 @@ The legal moves live in a table rather than in a cascade of conditions: a table
 can be tested exhaustively, a cascade cannot.
 
 Night 0 and Day 1 are phases in their own right, not special cases inside the
-normal loop (D-032).
+normal loop (D-032). So is the hunter's shot: it is fired by day and in public
+even when the night killed him (D-030), so it has to be played and watched
+rather than applied where the death happened.
 """
 
 from enum import StrEnum
@@ -18,6 +20,7 @@ class Phase(StrEnum):
     NIGHT_ZERO = "night_zero"
     DAY = "day"
     NIGHT = "night"
+    AVENGING_SHOT = "avenging_shot"
     RESOLUTION = "resolution"
     ENDED = "ended"
 
@@ -30,7 +33,8 @@ LEGAL_TRANSITIONS: dict[Phase, frozenset[Phase]] = {
     Phase.NIGHT_ZERO: frozenset({Phase.DAY}),
     Phase.DAY: frozenset({Phase.RESOLUTION}),
     Phase.NIGHT: frozenset({Phase.RESOLUTION}),
-    Phase.RESOLUTION: frozenset({Phase.DAY, Phase.NIGHT, Phase.ENDED}),
+    Phase.RESOLUTION: frozenset({Phase.DAY, Phase.NIGHT, Phase.ENDED, Phase.AVENGING_SHOT}),
+    Phase.AVENGING_SHOT: frozenset({Phase.RESOLUTION}),
     Phase.ENDED: frozenset(),
 }
 

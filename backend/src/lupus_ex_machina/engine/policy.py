@@ -47,6 +47,14 @@ class InformationPolicy(BaseModel):
     table where she suddenly stops being called would say more than that.
     """
 
+    hunter_must_shoot: bool = True
+    """Whether the hunter's shot can be given up (D-055).
+
+    On by default, and "non-renounceable" is taken literally: when a hunter will
+    not aim, the engine aims for him. A rule the agents could quietly opt out of
+    would not be a rule.
+    """
+
     reveal_role_on_death: bool = False
     """Whether the role of a player who just died is announced (D-072).
 
