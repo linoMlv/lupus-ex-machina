@@ -20,17 +20,18 @@ from lupus_ex_machina.engine.events import (
     GameEnded,
     IntentRejected,
     NightResolved,
-    NightTargetDesignated,
     NotebookEntryRecorded,
     PackRevealed,
     PhaseEntered,
     PlayerSeated,
+    PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
     RoleRevealed,
     SpeechDelivered,
     VoteResolved,
 )
+from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
@@ -106,11 +107,13 @@ def test_replay_restores_the_ballots_of_the_round() -> None:
 
 def test_replay_restores_what_the_pack_designated() -> None:
     recorder = Recorder().enter(Phase.DAY, day=1).enter(Phase.RESOLUTION).enter(Phase.NIGHT)
-    recorder.write(NightTargetDesignated(actor=WOLF.id, target=VILLAGER.id))
+    recorder.write(
+        PriorityShared(actor=WOLF.id, allocations=(PriorityPoint(target=VILLAGER.id, points=60),))
+    )
 
     rebuilt = replay(recorder.journal.events)
 
-    assert rebuilt.has_chosen_a_night_target(WOLF.id)
+    assert rebuilt.has_acted_tonight(WOLF.id)
 
 
 def test_a_resolved_vote_kills_and_closes_the_round() -> None:
@@ -126,13 +129,15 @@ def test_a_resolved_vote_kills_and_closes_the_round() -> None:
 
 def test_a_resolved_night_kills_its_victim() -> None:
     recorder = Recorder().enter(Phase.DAY, day=1).enter(Phase.RESOLUTION).enter(Phase.NIGHT)
-    recorder.write(NightTargetDesignated(actor=WOLF.id, target=VILLAGER.id))
+    recorder.write(
+        PriorityShared(actor=WOLF.id, allocations=(PriorityPoint(target=VILLAGER.id, points=60),))
+    )
     recorder.enter(Phase.RESOLUTION).write(NightResolved(victim=VILLAGER.id))
 
     rebuilt = replay(recorder.journal.events)
 
     assert not rebuilt.is_alive(VILLAGER.id)
-    assert rebuilt.night_choices == ()
+    assert rebuilt.priority_shares == ()
 
 
 def test_a_tie_that_spared_everyone_replays_as_such() -> None:

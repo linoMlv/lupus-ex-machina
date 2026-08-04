@@ -21,10 +21,10 @@ from lupus_ex_machina.engine.events import (
     Event,
     IntentRejected,
     NightResolved,
-    NightTargetDesignated,
     NotebookEntryRecorded,
     PackRevealed,
     PhaseEntered,
+    PriorityShared,
     PrivateReasoningRecorded,
     RoleRevealed,
     VoteResolved,
@@ -194,7 +194,7 @@ def test_the_channel_of_the_pack_never_reaches_a_villager(seed: int) -> None:
 
     for player in result.state.players:
         seen = project_journal(result.journal, Recipient.of(player))
-        pack_facts = payloads_of(seen, PackRevealed) + payloads_of(seen, NightTargetDesignated)
+        pack_facts = payloads_of(seen, PackRevealed) + payloads_of(seen, PriorityShared)
 
         if player.team is Team.WEREWOLVES:
             assert pack_facts, "a wolf belongs to the channel"
@@ -322,7 +322,7 @@ def test_no_word_of_another_players_thoughts_can_be_read(player: Player) -> None
 
 #: The facts that move the state along. Replaying the journal up to each of them
 #: rebuilds every situation a game actually went through.
-STATE_CHANGING = (PhaseEntered, BallotCast, NightTargetDesignated, VoteResolved, NightResolved)
+STATE_CHANGING = (PhaseEntered, BallotCast, PriorityShared, VoteResolved, NightResolved)
 
 #: Sweeping the views of a whole game means rebuilding it state by state, so
 #: this runs on a few games rather than on the corpus.

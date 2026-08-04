@@ -14,12 +14,15 @@ from typing import assert_never
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
+    PRIORITY_BUDGET,
     CastVote,
     Intent,
     RoleAction,
+    SharePriority,
     Speak,
     Wait,
 )
+from lupus_ex_machina.engine.night import prey_of
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, Team
@@ -45,6 +48,8 @@ def validate_intent(state: GameState, actor: PlayerId, intent: Intent) -> None:
             _validate_vote(state, actor, intent)
         case RoleAction():
             _validate_role_action(state, actor, intent)
+        case SharePriority():
+            _validate_priority_share(state, actor, intent)
         case _:  # pragma: no cover - the union is closed, mypy proves this is dead
             assert_never(intent)
 
@@ -75,6 +80,16 @@ def _ensure_alive_target(state: GameState, target: PlayerId) -> None:
 
 
 def _validate_speech(state: GameState, actor: PlayerId) -> None:
+    """The floor is public by day and the pack's own at night (D-007).
+
+    Night 0 is silent for everyone: the wolves meet without speaking (D-032),
+    which is a rule of the game rather than a limitation.
+    """
+    if state.phase is Phase.NIGHT:
+        if state.player(actor).team is not Team.WEREWOLVES:
+            raise IllegalIntentError(f"Player {actor} has nobody to talk to at night")
+        return
+
     if state.phase is not Phase.DAY:
         raise IllegalIntentError("Speaking is only allowed during the day")
     _ensure_still_holds_the_floor(state, actor)
@@ -115,7 +130,9 @@ def _validate_role_action(state: GameState, actor: PlayerId, intent: RoleAction)
 
     match intent.action:
         case RoleActionName.DEVOUR:
-            _validate_devouring(state, actor, intent.target)
+            raise IllegalIntentError(
+                "The pack designates its prey by spreading points, not one wolf at a time"
+            )
         case RoleActionName.INSPECT | RoleActionName.HEAL | RoleActionName.POISON:
             # The rules of the powered roles land with the roles themselves
             # (J4.4 to J4.6). Refusing what nothing would apply keeps an agent
@@ -140,10 +157,35 @@ def _ensure_the_role_owns_the_action(
         raise IllegalIntentError(f"A {role.name} cannot {action}")
 
 
-def _validate_devouring(state: GameState, actor: PlayerId, target: PlayerId) -> None:
-    if state.has_chosen_a_night_target(actor):
-        raise IllegalIntentError(f"Player {actor} has already designated a target tonight")
+def _validate_priority_share(state: GameState, actor: PlayerId, intent: SharePriority) -> None:
+    """Check one wolf's spread of the night's budget (D-008)."""
+    if state.phase is not Phase.NIGHT:
+        raise IllegalIntentError("The pack only designates its prey at night")
+    _ensure_the_role_owns_the_action(state, actor, RoleActionName.DEVOUR)
 
-    _ensure_alive_target(state, target)
-    if state.player(target).team is Team.WEREWOLVES:
-        raise IllegalIntentError("A werewolf cannot devour a player of its own team")
+    if state.has_acted_tonight(actor):
+        raise IllegalIntentError(f"Player {actor} has already spread their points tonight")
+    if intent.spent > PRIORITY_BUDGET:
+        raise IllegalIntentError(
+            f"A wolf spreads at most {PRIORITY_BUDGET} points, and this one spreads {intent.spent}"
+        )
+
+    named = [allocation.target for allocation in intent.allocations]
+    if len(named) != len(set(named)):
+        raise IllegalIntentError("A wolf may not put points on the same prey twice")
+
+    _ensure_every_target_is_prey(state, named)
+
+
+def _ensure_every_target_is_prey(state: GameState, named: list[PlayerId]) -> None:
+    """The pack may only weigh prey it could actually take tonight.
+
+    Read from the same place the view reads it, so the offer and the acceptance
+    cannot describe different tables.
+    """
+    huntable = {player.id for player in prey_of(state)}
+
+    for target in named:
+        _ensure_alive_target(state, target)
+        if target not in huntable:
+            raise IllegalIntentError(f"Player {target} is not prey the pack may take tonight")

@@ -15,7 +15,8 @@ audience (D-009). The boundary drawn here is the one that model will formalise.
 
 from pydantic import BaseModel, ConfigDict
 
-from lupus_ex_machina.engine.intents import IntentKind
+from lupus_ex_machina.engine.intents import PRIORITY_BUDGET, IntentKind
+from lupus_ex_machina.engine.night import prey_of
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import RoleName, Team
@@ -54,6 +55,8 @@ class PlayerView(BaseModel):
     allowed_intents: tuple[IntentKind, ...] = ()
     vote_targets: tuple[PlayerId, ...] = ()
     night_targets: tuple[PlayerId, ...] = ()
+    priority_budget: int = 0
+    """Points this player may spread over the prey tonight, zero when they may not."""
 
     @property
     def living_others(self) -> tuple[PlayerId, ...]:
@@ -80,6 +83,7 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         allowed_intents=_allowed_intents(state, viewer),
         vote_targets=_vote_targets(state, viewer),
         night_targets=_night_targets(state, viewer),
+        priority_budget=PRIORITY_BUDGET if _may_designate(state, viewer) else 0,
     )
 
 
@@ -114,15 +118,23 @@ def _allowed_intents(state: GameState, viewer: PlayerId) -> tuple[IntentKind, ..
             return (IntentKind.WAIT,)
         return (IntentKind.SPEAK, IntentKind.VOTE, IntentKind.WAIT)
 
-    if state.phase is Phase.NIGHT and _may_hunt(state, viewer):
-        return (IntentKind.ROLE_ACTION, IntentKind.WAIT)
+    if state.phase is Phase.NIGHT and state.player(viewer).team is Team.WEREWOLVES:
+        # The pack keeps its own floor all night (D-007), and may spread its
+        # points once (D-008).
+        if _may_designate(state, viewer):
+            return (IntentKind.SPEAK, IntentKind.SHARE_PRIORITY, IntentKind.WAIT)
+        return (IntentKind.SPEAK, IntentKind.WAIT)
 
     return (IntentKind.WAIT,)
 
 
-def _may_hunt(state: GameState, viewer: PlayerId) -> bool:
-    return state.player(viewer).team is Team.WEREWOLVES and not state.has_chosen_a_night_target(
-        viewer
+def _may_designate(state: GameState, viewer: PlayerId) -> bool:
+    """Whether this player may still weigh the prey tonight."""
+    return (
+        _may_act(state, viewer)
+        and state.phase is Phase.NIGHT
+        and state.player(viewer).team is Team.WEREWOLVES
+        and not state.has_acted_tonight(viewer)
     )
 
 
@@ -140,9 +152,11 @@ def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
 
 
 def _night_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
-    """Prey the pack may designate: the living, minus the wolves themselves."""
-    if not _may_act(state, viewer) or state.phase is not Phase.NIGHT:
+    """Prey the pack may weigh tonight.
+
+    Read from the same place the validator reads it, so the offer and the
+    acceptance cannot describe different tables.
+    """
+    if not _may_designate(state, viewer):
         return ()
-    if not _may_hunt(state, viewer):
-        return ()
-    return tuple(player.id for player in state.living if player.team is not Team.WEREWOLVES)
+    return tuple(player.id for player in prey_of(state))

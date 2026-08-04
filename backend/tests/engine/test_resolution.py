@@ -1,13 +1,15 @@
-"""Resolving a round.
+"""Resolving the day vote.
 
-Two moments are resolved: the day vote and the night. Both apply every death at
-once and only then let the victory be evaluated (D-059) — checking in between
-would let the wolves win before a pending shot is fired, which the reference
-scenarios forbid.
+Every death is applied at once and the victory is evaluated only afterwards
+(D-059) — checking in between would let the wolves win before a pending shot is
+fired, which the reference scenarios forbid.
+
+The night has its own module and its own tests: it collects several powers and
+settles them together, where the day comes down to counting ballots.
 """
 
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.resolution import resolve_day, resolve_night
+from lupus_ex_machina.engine.resolution import resolve_day
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.state import GameState
 
@@ -90,59 +92,13 @@ def test_resolving_the_day_leaves_the_source_state_untouched() -> None:
     assert len(state.ballots) == 2
 
 
-# --- Night ------------------------------------------------------------------
-
-
-def test_the_pack_devours_the_player_it_agrees_on() -> None:
-    state = (
-        game().with_night_choice_from(WOLF, VILLAGER).with_night_choice_from(OTHER_WOLF, VILLAGER)
-    )
-
-    resolved, victim = resolve_night(state)
-
-    assert victim == VILLAGER
-    assert not resolved.is_alive(VILLAGER)
-
-
-def test_a_lone_wolf_devours_its_target() -> None:
-    state = game().with_night_choice_from(WOLF, OTHER_VILLAGER)
-
-    _, victim = resolve_night(state)
-
-    assert victim == OTHER_VILLAGER
-
-
-def test_a_divided_pack_kills_nobody() -> None:
-    """Same rule as the day tie, applied to the wolves' priority vote (D-050)."""
-    state = (
-        game()
-        .with_night_choice_from(WOLF, VILLAGER)
-        .with_night_choice_from(OTHER_WOLF, OTHER_VILLAGER)
-    )
-
-    resolved, victim = resolve_night(state)
-
-    assert victim is None
-    assert len(resolved.living) == 5
-
-
-def test_a_night_without_any_choice_kills_nobody() -> None:
-    resolved, victim = resolve_night(game())
-
-    assert victim is None
-    assert len(resolved.living) == 5
-
-
 # --- Round bookkeeping ------------------------------------------------------
 
 
 def test_resolving_clears_the_choices_of_the_round() -> None:
-    """Ballots and night targets belong to a round, never to the next one."""
-    day_state = game().with_ballot_from(WOLF, VILLAGER)
-    night_state = game().with_night_choice_from(WOLF, VILLAGER)
+    """Ballots belong to a round, never to the next one."""
+    state = game().with_ballot_from(WOLF, VILLAGER)
 
-    resolved_day, _ = resolve_day(day_state)
-    resolved_night, _ = resolve_night(night_state)
+    resolved, _ = resolve_day(state)
 
-    assert resolved_day.ballots == ()
-    assert resolved_night.night_choices == ()
+    assert resolved.ballots == ()

@@ -13,7 +13,9 @@ from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
+    PriorityPoint,
     RoleAction,
+    SharePriority,
     Speak,
     Wait,
 )
@@ -85,12 +87,25 @@ def test_a_role_action_is_refused_during_the_day() -> None:
         validate_intent(day(), WOLF, DEVOUR_VILLAGER)
 
 
-def test_speaking_and_voting_are_refused_during_the_night() -> None:
-    state = night()
+def test_voting_is_refused_during_the_night() -> None:
+    with pytest.raises(IllegalIntentError):
+        validate_intent(night(), WOLF, CastVote(target=VILLAGER))
 
-    for intent in (Speak(speech="Chut."), CastVote(target=VILLAGER)):
-        with pytest.raises(IllegalIntentError):
-            validate_intent(state, WOLF, intent)
+
+def test_the_pack_keeps_its_own_floor_at_night() -> None:
+    """The wolves have a channel of their own once the table is asleep (D-007)."""
+    validate_intent(night(), WOLF, Speak(speech="On prend Camille."))
+
+
+def test_nobody_outside_the_pack_has_anyone_to_talk_to_at_night() -> None:
+    with pytest.raises(IllegalIntentError, match="nobody to talk to"):
+        validate_intent(night(), VILLAGER, Speak(speech="Il y a quelqu'un ?"))
+
+
+def test_the_pack_meets_in_silence_on_night_zero() -> None:
+    """They recognise each other without a word (D-032)."""
+    with pytest.raises(IllegalIntentError):
+        validate_intent(game(), WOLF, Speak(speech="Salut, collègue."))
 
 
 @pytest.mark.parametrize("phase", [Phase.RESOLUTION, Phase.ENDED])
@@ -165,38 +180,98 @@ def test_a_player_who_voted_may_still_wait() -> None:
     validate_intent(state, WOLF, Wait())
 
 
-# --- Night actions ----------------------------------------------------------
+# --- The pack designates its prey (D-008) ------------------------------------
 
 
-def test_only_a_wolf_may_devour() -> None:
-    """Refused because the villager's entry does not declare the action (D-010)."""
+def spread(**points: int) -> SharePriority:
+    """A wolf's spread, written as ``spread(p2=60, p3=-10)``."""
+    return SharePriority(
+        allocations=tuple(
+            PriorityPoint(target=PlayerId(target), points=amount)
+            for target, amount in points.items()
+        )
+    )
+
+
+def test_a_legal_spread_passes() -> None:
+    validate_intent(night(), WOLF, spread(p2=60, p3=40))
+
+
+def test_a_spread_of_negative_points_passes() -> None:
+    """Pushing a prey away is a legal use of the budget (D-008)."""
+    validate_intent(night(), WOLF, spread(p2=60, p3=-40))
+
+
+def test_spending_less_than_the_budget_passes() -> None:
+    """The budget is a ceiling, not a quota: under-spending costs influence, nothing else."""
+    validate_intent(night(), WOLF, spread(p2=10))
+
+
+def test_a_spread_over_the_budget_is_refused() -> None:
+    with pytest.raises(IllegalIntentError, match="at most"):
+        validate_intent(night(), WOLF, spread(p2=80, p3=40))
+
+
+def test_negative_points_count_against_the_budget() -> None:
+    """Otherwise a wolf could weigh every prey at full strength for free."""
+    with pytest.raises(IllegalIntentError, match="at most"):
+        validate_intent(night(), WOLF, spread(p2=80, p3=-40))
+
+
+def test_naming_the_same_prey_twice_is_refused() -> None:
+    duplicated = SharePriority(
+        allocations=(
+            PriorityPoint(target=VILLAGER, points=30),
+            PriorityPoint(target=VILLAGER, points=30),
+        )
+    )
+
+    with pytest.raises(IllegalIntentError, match="twice"):
+        validate_intent(night(), WOLF, duplicated)
+
+
+def test_only_a_wolf_may_weigh_the_prey() -> None:
     with pytest.raises(IllegalIntentError, match="villager cannot devour"):
-        validate_intent(night(), VILLAGER, DEVOUR_VILLAGER)
+        validate_intent(night(), VILLAGER, spread(p2=10))
 
 
-def test_a_wolf_may_not_devour_a_fellow_wolf() -> None:
-    with pytest.raises(IllegalIntentError, match="own team"):
-        validate_intent(night(), WOLF, RoleAction(action=RoleActionName.DEVOUR, target=OTHER_WOLF))
+def test_the_pack_may_not_weigh_one_of_its_own() -> None:
+    with pytest.raises(IllegalIntentError, match="not prey"):
+        validate_intent(night(), WOLF, spread(p1=50))
 
 
-def test_a_wolf_may_not_devour_a_dead_player() -> None:
+def test_the_pack_may_not_weigh_a_dead_player() -> None:
     state = night().with_players_killed([VILLAGER])
 
     with pytest.raises(IllegalIntentError, match="dead"):
-        validate_intent(state, WOLF, DEVOUR_VILLAGER)
+        validate_intent(state, WOLF, spread(p2=50))
 
 
-def test_a_wolf_designates_a_target_only_once_per_night() -> None:
-    state = night().with_night_choice_from(WOLF, VILLAGER)
+def test_a_wolf_spreads_its_points_only_once_a_night() -> None:
+    state = night().with_priority_share_from(WOLF, (PriorityPoint(target=VILLAGER, points=50),))
 
-    with pytest.raises(IllegalIntentError, match="already"):
-        validate_intent(
-            state, WOLF, RoleAction(action=RoleActionName.DEVOUR, target=OTHER_VILLAGER)
-        )
+    with pytest.raises(IllegalIntentError, match="already spread"):
+        validate_intent(state, WOLF, spread(p3=50))
 
 
-def test_a_legal_devouring_passes() -> None:
-    validate_intent(night(), WOLF, DEVOUR_VILLAGER)
+def test_a_runoff_narrows_the_prey_the_pack_may_weigh() -> None:
+    """The second round is restricted to the ex aequo (D-062)."""
+    state = night().reopened_for_runoff((VILLAGER,))
+
+    validate_intent(state, WOLF, spread(p2=50))
+    with pytest.raises(IllegalIntentError, match="not prey"):
+        validate_intent(state, WOLF, spread(p3=50))
+
+
+def test_the_pack_only_designates_at_night() -> None:
+    with pytest.raises(IllegalIntentError, match="at night"):
+        validate_intent(day(), WOLF, spread(p2=50))
+
+
+def test_a_role_action_never_stands_in_for_the_pack_vote() -> None:
+    """One wolf naming one prey is not how the pack decides (D-008)."""
+    with pytest.raises(IllegalIntentError, match="spreading points"):
+        validate_intent(night(), WOLF, DEVOUR_VILLAGER)
 
 
 # --- Purity -----------------------------------------------------------------

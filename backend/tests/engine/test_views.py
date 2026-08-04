@@ -7,16 +7,18 @@ the role of another player must not appear anywhere in the view (GL-3).
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
+    PRIORITY_BUDGET,
     CastVote,
     Intent,
     IntentKind,
-    RoleAction,
+    PriorityPoint,
+    SharePriority,
     Speak,
     Wait,
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.roles import RoleActionName, RoleName
+from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project
@@ -126,9 +128,20 @@ def test_a_player_who_voted_may_only_wait() -> None:
     assert view.has_voted
 
 
-def test_only_wolves_are_offered_a_night_action() -> None:
-    assert project(night(), WOLF).allowed_intents == (IntentKind.ROLE_ACTION, IntentKind.WAIT)
+def test_only_wolves_are_offered_the_night() -> None:
+    """The pack keeps its own floor and its own vote; nobody else has either."""
+    assert set(project(night(), WOLF).allowed_intents) == {
+        IntentKind.SPEAK,
+        IntentKind.SHARE_PRIORITY,
+        IntentKind.WAIT,
+    }
     assert project(night(), VILLAGER).allowed_intents == (IntentKind.WAIT,)
+
+
+def test_a_wolf_is_told_how_many_points_it_may_spread() -> None:
+    """What a model needs to answer at all (D-008)."""
+    assert project(night(), WOLF).priority_budget == PRIORITY_BUDGET
+    assert project(night(), VILLAGER).priority_budget == 0
 
 
 def test_a_wolf_is_never_offered_its_own_pack_as_prey() -> None:
@@ -137,10 +150,14 @@ def test_a_wolf_is_never_offered_its_own_pack_as_prey() -> None:
     assert set(view.night_targets) == {VILLAGER, OTHER_VILLAGER}
 
 
-def test_a_wolf_that_already_chose_may_only_wait() -> None:
-    state = night().with_night_choice_from(WOLF, VILLAGER)
+def test_a_wolf_that_already_spread_its_points_keeps_only_the_floor() -> None:
+    state = night().with_priority_share_from(WOLF, (PriorityPoint(target=VILLAGER, points=50),))
 
-    assert project(state, WOLF).allowed_intents == (IntentKind.WAIT,)
+    view = project(state, WOLF)
+
+    assert set(view.allowed_intents) == {IntentKind.SPEAK, IntentKind.WAIT}
+    assert view.night_targets == ()
+    assert view.priority_budget == 0
 
 
 # --- The view and the validator must tell the same story ---------------------
@@ -157,6 +174,7 @@ def accepts(state: GameState, actor: PlayerId, intent: Intent) -> bool:
 
 def every_moment_of_a_game() -> list[GameState]:
     """One state per moment a view can be built from, including the closed ones."""
+    a_share = (PriorityPoint(target=VILLAGER, points=50),)
     return [
         game(),
         day(number=1),
@@ -164,8 +182,9 @@ def every_moment_of_a_game() -> list[GameState]:
         day().with_ballot_from(WOLF, VILLAGER),
         day().with_players_killed([VILLAGER]),
         night(),
-        night().with_night_choice_from(WOLF, VILLAGER),
+        night().with_priority_share_from(WOLF, a_share),
         night().with_players_killed([VILLAGER]),
+        night().reopened_for_runoff((VILLAGER,)),
         day().entering(Phase.RESOLUTION),
         day().entering(Phase.RESOLUTION).entering(Phase.ENDED),
     ]
@@ -189,14 +208,16 @@ def test_the_view_offers_exactly_the_targets_the_validator_accepts() -> None:
                     state, actor.id, CastVote(target=other.id)
                 ), f"vote, {where}"
                 assert (other.id in view.night_targets) == accepts(
-                    state, actor.id, RoleAction(action=RoleActionName.DEVOUR, target=other.id)
-                ), f"devour, {where}"
+                    state,
+                    actor.id,
+                    SharePriority(allocations=(PriorityPoint(target=other.id, points=10),)),
+                ), f"prey, {where}"
 
 
 def test_the_view_offers_exactly_the_intent_kinds_the_validator_accepts() -> None:
     """Same promise, on the moves that need no target.
 
-    ROLE_ACTION always needs one, so it is covered by the test above.
+    SHARE_PRIORITY always needs one, so it is covered by the test above.
     """
     probes: dict[IntentKind, Intent] = {
         IntentKind.SPEAK: Speak(speech="Je vous écoute."),

@@ -23,6 +23,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import RoleName
@@ -40,7 +41,9 @@ class EventKind(StrEnum):
     SPEECH_DELIVERED = "speech_delivered"
     BALLOT_CAST = "ballot_cast"
     BALLOT_ANNOUNCED = "ballot_announced"
-    NIGHT_TARGET_DESIGNATED = "night_target_designated"
+    PRIORITY_SHARED = "priority_shared"
+    PACK_SPEECH_DELIVERED = "pack_speech_delivered"
+    RUNOFF_OPENED = "runoff_opened"
     VOTE_RESOLVED = "vote_resolved"
     NIGHT_RESOLVED = "night_resolved"
     ROLE_REVEALED = "role_revealed"
@@ -169,16 +172,46 @@ class BallotAnnounced(Fact):
         return Visibility.public()
 
 
-class NightTargetDesignated(Fact):
-    """A wolf names its prey on the private channel of the pack (D-007)."""
+class PriorityShared(Fact):
+    """A wolf spreads its points over the prey, on the pack's channel (D-008)."""
 
-    kind: Literal[EventKind.NIGHT_TARGET_DESIGNATED] = EventKind.NIGHT_TARGET_DESIGNATED
+    kind: Literal[EventKind.PRIORITY_SHARED] = EventKind.PRIORITY_SHARED
     actor: PlayerId
-    target: PlayerId
+    allocations: tuple[PriorityPoint, ...]
 
     @property
     def audience(self) -> Visibility:
         """The pack."""
+        return Visibility.for_role(RoleName.WEREWOLF)
+
+
+class PackSpeechDelivered(Fact):
+    """Something said on the private channel of the pack (D-007).
+
+    A fact of its own rather than a flag on public speech: the two have two
+    audiences, and one type carrying both would put the filter in charge of
+    redacting a field.
+    """
+
+    kind: Literal[EventKind.PACK_SPEECH_DELIVERED] = EventKind.PACK_SPEECH_DELIVERED
+    speaker: PlayerId
+    speech: str = Field(min_length=1)
+
+    @property
+    def audience(self) -> Visibility:
+        """The pack, and never the table."""
+        return Visibility.for_role(RoleName.WEREWOLF)
+
+
+class RunoffOpened(Fact):
+    """The pack tied, so a silent second round is held between the ex aequo (D-062)."""
+
+    kind: Literal[EventKind.RUNOFF_OPENED] = EventKind.RUNOFF_OPENED
+    targets: tuple[PlayerId, ...]
+
+    @property
+    def audience(self) -> Visibility:
+        """The pack: the tie happened on its own channel."""
         return Visibility.for_role(RoleName.WEREWOLF)
 
 
@@ -298,7 +331,9 @@ EventPayload = Annotated[
     | SpeechDelivered
     | BallotCast
     | BallotAnnounced
-    | NightTargetDesignated
+    | PriorityShared
+    | PackSpeechDelivered
+    | RunoffOpened
     | VoteResolved
     | NightResolved
     | RoleRevealed

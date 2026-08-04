@@ -17,6 +17,14 @@ class InformationPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    require_werewolf_target: bool = False
+    """Whether the pack must leave the night with a victim (D-078).
+
+    False by default: the rules do not force a designation, and a game that does
+    not progress is an admitted state rather than a bug. When it is switched on,
+    a pack that ties or names nobody has the choice made for it.
+    """
+
     reveal_role_on_death: bool = False
     """Whether the role of a player who just died is announced (D-072).
 

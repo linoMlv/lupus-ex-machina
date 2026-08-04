@@ -33,21 +33,31 @@ from lupus_ex_machina.engine.events import (
     GameEnded,
     IntentRejected,
     NightResolved,
-    NightTargetDesignated,
     PackRevealed,
+    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PriorityShared,
     RoleAssigned,
     RoleRevealed,
+    RunoffOpened,
     SpeechDelivered,
     VoteResolved,
 )
-from lupus_ex_machina.engine.intents import CastVote, Intent, RoleAction, Speak, Wait
+from lupus_ex_machina.engine.intents import (
+    CastVote,
+    Intent,
+    RoleAction,
+    SharePriority,
+    Speak,
+    Wait,
+)
 from lupus_ex_machina.engine.journal import Journal
+from lupus_ex_machina.engine.night import night_callers, resolve_night, tied_prey
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
-from lupus_ex_machina.engine.resolution import resolve_day, resolve_night
+from lupus_ex_machina.engine.resolution import resolve_day
 from lupus_ex_machina.engine.roles import Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
@@ -183,12 +193,41 @@ class _Run:
         return self._resolve(state, resolve_day, _vote_outcome)
 
     def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
-        """Ask the pack for its prey, then resolve the night."""
+        """Wake the roles in order, hold a runoff if the pack tied, then resolve."""
         state = self.enter(state, Phase.NIGHT)
-        for wolf in state.living_of_team(Team.WEREWOLVES):
-            state = self._apply(state, wolf.id, self._ask(state, wolf.id))
+        state = self._collect_night_intents(state)
 
-        return self._resolve(state, resolve_night, _night_outcome)
+        tied = tied_prey(state)
+        if tied:
+            state = self._hold_a_runoff(state, tied)
+
+        return self._resolve(state, self._resolve_the_night, _night_outcome)
+
+    def _collect_night_intents(self, state: GameState) -> GameState:
+        """Ask everyone the night wakes, in the order their role is called (D-006).
+
+        Reading the callers once is safe here, and only here: nothing kills
+        anyone while the night runs, because everything it collects is settled
+        at the end (D-006). The day has no such guarantee — the hunter fires as
+        they die — which is why its own loop cannot take the same shortcut.
+        """
+        for caller in night_callers(state):
+            state = self._apply(state, caller.id, self._ask(state, caller.id))
+        return state
+
+    def _hold_a_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
+        """Put the tied prey back to the pack, once, without a word (D-050, D-062)."""
+        state = state.reopened_for_runoff(tied)
+        self._journal.record(RunoffOpened(targets=tied), at=state)
+
+        for wolf in night_callers(state):
+            if wolf.team is Team.WEREWOLVES:
+                state = self._apply(state, wolf.id, self._ask(state, wolf.id))
+        return state
+
+    def _resolve_the_night(self, state: GameState) -> tuple[GameState, PlayerId | None]:
+        """Close the night with the options the game was configured with."""
+        return resolve_night(state, policy=self._policy)
 
     def enter(self, state: GameState, phase: Phase, *, day: int | None = None) -> GameState:
         """Move to another phase and record it. The only way a phase is entered."""
@@ -256,22 +295,34 @@ class _Run:
         match intent:
             case CastVote():
                 return self._cast(state, actor, intent.target)
-            case RoleAction():
-                state = state.with_night_choice_from(actor, intent.target)
+            case SharePriority():
+                state = state.with_priority_share_from(actor, intent.allocations)
                 self._journal.record(
-                    NightTargetDesignated(actor=actor, target=intent.target), at=state
+                    PriorityShared(actor=actor, allocations=intent.allocations), at=state
                 )
                 return state
             case Speak():
-                self._journal.record(SpeechDelivered(speaker=actor, speech=intent.speech), at=state)
+                self._journal.record(self._speech_of(state, actor, intent.speech), at=state)
                 return state
-            case Wait():
+            case RoleAction() | Wait():
                 # Silence leaves the state untouched, and says nothing anyone
-                # could act on while the floor still goes round the table. It
-                # becomes a fact worth recording when the bidding does (J5).
+                # could act on while the floor still goes round the table; it
+                # becomes a fact worth recording when the bidding does (J5). No
+                # role action reaches here either: the validator refuses every
+                # one of them until the powered roles land (J4.4 to J4.6).
                 return state
             case _:  # pragma: no cover - the union is closed, mypy proves this is dead
                 assert_never(intent)
+
+    def _speech_of(self, state: GameState, speaker: PlayerId, speech: str) -> EventPayload:
+        """Route a line to the floor it was spoken on.
+
+        The pack has its own channel at night (D-007), and what is said there is
+        a fact with its own audience rather than public speech wearing a flag.
+        """
+        if state.phase is Phase.NIGHT:
+            return PackSpeechDelivered(speaker=speaker, speech=speech)
+        return SpeechDelivered(speaker=speaker, speech=speech)
 
     def _cast(self, state: GameState, voter: PlayerId, target: PlayerId | None = None) -> GameState:
         """Record a vote. The only way a ballot enters the game.

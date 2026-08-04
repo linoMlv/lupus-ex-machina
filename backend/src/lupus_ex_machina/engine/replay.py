@@ -25,14 +25,16 @@ from lupus_ex_machina.engine.events import (
     GameEnded,
     IntentRejected,
     NightResolved,
-    NightTargetDesignated,
     NotebookEntryRecorded,
     PackRevealed,
+    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
     RoleRevealed,
+    RunoffOpened,
     SpeechDelivered,
     VoteResolved,
 )
@@ -92,15 +94,18 @@ class _Replay:
                 self._enter(entered)
             case BallotCast() as ballot:
                 self._state = self._running().with_ballot_from(ballot.voter, ballot.target)
-            case NightTargetDesignated() as designation:
-                self._state = self._running().with_night_choice_from(
-                    designation.actor, designation.target
+            case PriorityShared() as spread:
+                self._state = self._running().with_priority_share_from(
+                    spread.actor, spread.allocations
                 )
+            case RunoffOpened() as runoff:
+                self._state = self._running().reopened_for_runoff(runoff.targets)
             case VoteResolved(eliminated=victim) | NightResolved(victim=victim):
                 self._close_round(victim)
             case (
                 PackRevealed()
                 | SpeechDelivered()
+                | PackSpeechDelivered()
                 | BallotAnnounced()
                 | RoleRevealed()
                 | GameEnded()

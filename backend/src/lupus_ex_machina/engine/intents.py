@@ -25,6 +25,7 @@ class IntentKind(StrEnum):
     VOTE = "vote"
     WAIT = "wait"
     ROLE_ACTION = "role_action"
+    SHARE_PRIORITY = "share_priority"
 
 
 class _BaseIntent(BaseModel):
@@ -69,4 +70,48 @@ class RoleAction(_BaseIntent):
     target: PlayerId = Field(description="Le joueur que tu vises.")
 
 
-Intent = Annotated[Speak | CastVote | Wait | RoleAction, Field(discriminator="kind")]
+#: How many points a wolf spreads over the prey in one night (D-008). A ceiling
+#: rather than a quota: spending less is a legal choice, and it costs the wolf
+#: influence over the tally, which is penalty enough.
+PRIORITY_BUDGET = 100
+
+
+class PriorityPoint(BaseModel):
+    """Points a wolf puts on one prey. Negative means "anyone but them"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    target: PlayerId = Field(description="Le joueur concerné.")
+    points: int = Field(
+        description=(
+            "Points que tu mets sur ce joueur : positif pour le désigner, négatif pour l'écarter."
+        )
+    )
+
+
+class SharePriority(_BaseIntent):
+    """Spread the night's budget over the prey the pack might take (D-008).
+
+    The pack does not vote for a single name: each wolf weighs the prey, and the
+    designation is the tally. Abstaining is :class:`Wait` — an allocation is how
+    a wolf states a preference, so it states at least one.
+    """
+
+    kind: Literal[IntentKind.SHARE_PRIORITY] = IntentKind.SHARE_PRIORITY
+    allocations: tuple[PriorityPoint, ...] = Field(
+        min_length=1,
+        description=(
+            f"Répartis jusqu'à {PRIORITY_BUDGET} points entre les proies, "
+            "en comptant les points négatifs dans ton budget."
+        ),
+    )
+
+    @property
+    def spent(self) -> int:
+        """Budget consumed. Pushing a prey away costs as much as pulling one in."""
+        return sum(abs(allocation.points) for allocation in self.allocations)
+
+
+Intent = Annotated[
+    Speak | CastVote | Wait | RoleAction | SharePriority, Field(discriminator="kind")
+]

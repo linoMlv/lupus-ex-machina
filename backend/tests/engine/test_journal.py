@@ -14,13 +14,14 @@ from lupus_ex_machina.engine.events import (
     BallotCast,
     Event,
     IntentRejected,
-    NightTargetDesignated,
     PackRevealed,
     PhaseEntered,
     PlayerSeated,
+    PriorityShared,
     RoleAssigned,
     SpeechDelivered,
 )
+from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.journal import Journal, project_journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
@@ -125,7 +126,10 @@ def populated() -> Journal:
     recorder.record(PhaseEntered(phase=Phase.NIGHT_ZERO, day=0), at=state)
     recorder.record(RoleAssigned(player=WOLF.id, role=RoleName.WEREWOLF), at=state)
     recorder.record(PackRevealed(members=(WOLF.id, OTHER_WOLF.id)), at=state)
-    recorder.record(NightTargetDesignated(actor=WOLF.id, target=VILLAGER.id), at=state)
+    recorder.record(
+        PriorityShared(actor=WOLF.id, allocations=(PriorityPoint(target=VILLAGER.id, points=60),)),
+        at=state,
+    )
     recorder.record(BallotCast(voter=VILLAGER.id, target=WOLF.id), at=state)
     recorder.record(IntentRejected(actor=VILLAGER.id, reason="already voted"), at=state)
     return recorder
@@ -140,7 +144,7 @@ def test_a_villager_never_sees_the_channel_of_the_pack() -> None:
     seen = kinds_seen_by(Recipient.of(VILLAGER))
 
     assert "pack_revealed" not in seen
-    assert "night_target_designated" not in seen
+    assert "priority_shared" not in seen
     assert "phase_entered" in seen, "public facts still get through"
 
 
@@ -148,7 +152,7 @@ def test_a_wolf_sees_the_channel_of_its_own_pack() -> None:
     seen = kinds_seen_by(Recipient.of(OTHER_WOLF))
 
     assert "pack_revealed" in seen
-    assert "night_target_designated" in seen
+    assert "priority_shared" in seen
 
 
 def test_nobody_at_the_table_sees_another_players_role() -> None:

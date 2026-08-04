@@ -24,17 +24,20 @@ from lupus_ex_machina.engine.events import (
     GameEnded,
     IntentRejected,
     NightResolved,
-    NightTargetDesignated,
     NotebookEntryRecorded,
     PackRevealed,
+    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
+    PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
     RoleRevealed,
+    RunoffOpened,
     SpeechDelivered,
     VoteResolved,
 )
+from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.roles import RoleName
@@ -47,6 +50,8 @@ VILLAGER = PlayerId("p2")
 WHEN = datetime(2026, 8, 3, 21, 0, tzinfo=UTC)
 
 PACK = Visibility.for_role(RoleName.WEREWOLF)
+
+A_FEW_POINTS = PriorityPoint(target=VILLAGER, points=60)
 
 
 #: Every fact the engine can produce, next to the audience it is addressed to.
@@ -61,7 +66,9 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
     (BallotCast(voter=WOLF, target=VILLAGER), Visibility.for_player(WOLF)),
     (BallotCast(voter=WOLF, target=None), Visibility.public()),
     (BallotAnnounced(voter=WOLF), Visibility.public()),
-    (NightTargetDesignated(actor=WOLF, target=VILLAGER), PACK),
+    (PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)), PACK),
+    (PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."), PACK),
+    (RunoffOpened(targets=(VILLAGER,)), PACK),
     (VoteResolved(eliminated=VILLAGER), Visibility.public()),
     (NightResolved(victim=VILLAGER), Visibility.public()),
     (RoleRevealed(player=VILLAGER, role=RoleName.VILLAGER), Visibility.public()),
@@ -133,8 +140,13 @@ def test_death_is_public_whatever_took_the_player() -> None:
 def test_the_pack_channel_never_leaves_the_pack() -> None:
     villager = Recipient(player=VILLAGER, role=RoleName.VILLAGER)
 
-    assert not NightTargetDesignated(actor=WOLF, target=VILLAGER).audience.reaches(villager)
-    assert not PackRevealed(members=(WOLF,)).audience.reaches(villager)
+    for spoken in (
+        PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)),
+        PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."),
+        RunoffOpened(targets=(VILLAGER,)),
+        PackRevealed(members=(WOLF,)),
+    ):
+        assert not spoken.audience.reaches(villager)
 
 
 def test_inner_thoughts_belong_to_their_author_and_the_spectator() -> None:

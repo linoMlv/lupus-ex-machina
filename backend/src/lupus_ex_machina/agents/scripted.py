@@ -13,7 +13,9 @@ from lupus_ex_machina.engine.intents import (
     CastVote,
     Intent,
     IntentKind,
+    PriorityPoint,
     RoleAction,
+    SharePriority,
     Speak,
     Wait,
 )
@@ -44,9 +46,13 @@ class AlwaysAccuseAgent:
     """
 
     def decide(self, view: PlayerView) -> Intent:
-        """Devour, or vote against the first available target."""
-        if IntentKind.ROLE_ACTION in view.allowed_intents and view.night_targets:
-            return RoleAction(action=RoleActionName.DEVOUR, target=view.night_targets[0])
+        """Put everything on the first prey, or vote against the first target."""
+        if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.night_targets:
+            return SharePriority(
+                allocations=(
+                    PriorityPoint(target=view.night_targets[0], points=view.priority_budget),
+                )
+            )
         if IntentKind.VOTE in view.allowed_intents:
             return CastVote(target=view.vote_targets[0] if view.vote_targets else None)
         return Wait()
@@ -61,7 +67,7 @@ class RogueAgent:
     """
 
     def decide(self, view: PlayerView) -> Intent:
-        """Play an intent the rules almost always refuse."""
+        """Play an intent the rules refuse: the pack never designates one by one."""
         prey = view.living_others[0] if view.living_others else view.self_id
         return RoleAction(action=RoleActionName.DEVOUR, target=prey)
 
@@ -86,13 +92,25 @@ class RandomAgent:
                 return Speak(speech=self._improvise(view))
             case IntentKind.VOTE:
                 return CastVote(target=self._maybe_target(view))
-            case IntentKind.ROLE_ACTION:
-                return RoleAction(
-                    action=RoleActionName.DEVOUR,
-                    target=self._rng.choice(view.night_targets),
-                )
+            case IntentKind.SHARE_PRIORITY:
+                return self._spread(view)
             case _:
                 return Wait()
+
+    def _spread(self, view: PlayerView) -> Intent:
+        """Put the whole budget on one prey drawn at random.
+
+        A real spread is what a model will produce (D-008); a scripted agent
+        only has to exercise the rule, and one lump keeps a game readable when
+        it is printed.
+        """
+        return SharePriority(
+            allocations=(
+                PriorityPoint(
+                    target=self._rng.choice(view.night_targets), points=view.priority_budget
+                ),
+            )
+        )
 
     def _maybe_target(self, view: PlayerView) -> PlayerId | None:
         """Name someone, or vote blank — both are legal whenever voting is."""

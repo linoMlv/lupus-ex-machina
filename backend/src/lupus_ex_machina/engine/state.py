@@ -12,6 +12,7 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.phases import Phase, ensure_transition_allowed
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import Team
@@ -26,13 +27,13 @@ class Ballot(BaseModel):
     target: PlayerId | None = None
 
 
-class NightChoice(BaseModel):
-    """A target designated by a player during the night."""
+class PriorityShare(BaseModel):
+    """One wolf's spread of the night's budget over the prey (D-008)."""
 
     model_config = ConfigDict(frozen=True)
 
     actor: PlayerId
-    target: PlayerId
+    allocations: tuple[PriorityPoint, ...]
 
 
 class GameState(BaseModel):
@@ -44,7 +45,14 @@ class GameState(BaseModel):
     phase: Phase
     day: int = Field(ge=0)
     ballots: tuple[Ballot, ...] = ()
-    night_choices: tuple[NightChoice, ...] = ()
+    priority_shares: tuple[PriorityShare, ...] = ()
+    runoff_targets: tuple[PlayerId, ...] = ()
+    """Whom a silent second round is restricted to, empty outside one (D-062).
+
+    Carried by the state rather than by whoever runs the vote, because the view
+    handed to an agent is derived from the state alone: a restriction only the
+    caller knew about would offer moves the validator refuses.
+    """
 
     @classmethod
     def initial(cls, players: Iterable[Player]) -> "GameState":
@@ -81,9 +89,14 @@ class GameState(BaseModel):
         """Whether that player already cast a ballot this round (D-013, D-024)."""
         return any(ballot.voter == player_id for ballot in self.ballots)
 
-    def has_chosen_a_night_target(self, player_id: PlayerId) -> bool:
-        """Whether that player already designated a target this night."""
-        return any(choice.actor == player_id for choice in self.night_choices)
+    def has_acted_tonight(self, player_id: PlayerId) -> bool:
+        """Whether that player already used their power this night.
+
+        One move per night, whichever shape it took: a single target, or the
+        pack's weighted spread. The witch's "one potion per turn" (D-029) falls
+        out of this rather than being restated.
+        """
+        return any(share.actor == player_id for share in self.priority_shares)
 
     # --- Transitions -----------------------------------------------------
 
@@ -97,10 +110,26 @@ class GameState(BaseModel):
         ballot = Ballot(voter=voter, target=target)
         return self.model_copy(update={"ballots": (*self.ballots, ballot)})
 
-    def with_night_choice_from(self, actor: PlayerId, target: PlayerId) -> "GameState":
-        """Return the state with one more night target recorded."""
-        choice = NightChoice(actor=actor, target=target)
-        return self.model_copy(update={"night_choices": (*self.night_choices, choice)})
+    def with_priority_share_from(
+        self, actor: PlayerId, allocations: tuple[PriorityPoint, ...]
+    ) -> "GameState":
+        """Return the state with one more wolf's spread recorded."""
+        share = PriorityShare(actor=actor, allocations=allocations)
+        return self.model_copy(update={"priority_shares": (*self.priority_shares, share)})
+
+    def reopened_for_runoff(self, targets: Iterable[PlayerId]) -> "GameState":
+        """Return the state with a silent second round open between those players.
+
+        What the first round collected is dropped: the runoff is a fresh vote,
+        not an amendment of the one that tied (D-050).
+        """
+        return self.model_copy(
+            update={
+                "ballots": (),
+                "priority_shares": (),
+                "runoff_targets": tuple(targets),
+            }
+        )
 
     def with_players_killed(self, victims: Iterable[PlayerId]) -> "GameState":
         """Return the state with the given players dead."""
@@ -112,5 +141,11 @@ class GameState(BaseModel):
         return self.model_copy(update={"players": players})
 
     def cleared_of_round_choices(self) -> "GameState":
-        """Return the state without the ballots and night targets of the round."""
-        return self.model_copy(update={"ballots": (), "night_choices": ()})
+        """Return the state without anything the round collected."""
+        return self.model_copy(
+            update={
+                "ballots": (),
+                "priority_shares": (),
+                "runoff_targets": (),
+            }
+        )

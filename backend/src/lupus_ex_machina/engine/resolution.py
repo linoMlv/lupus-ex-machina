@@ -1,4 +1,7 @@
-"""Resolving a round.
+"""Resolving the day vote.
+
+The night has its own module: it collects several powers and settles them
+together, where the day comes down to counting ballots.
 
 Deaths are applied all at once, and the outcome is evaluated only afterwards
 (D-059). Resolving death by death would let the wolves win before a pending
@@ -21,12 +24,6 @@ def resolve_day(state: GameState) -> tuple[GameState, PlayerId | None]:
     named = (ballot.target for ballot in state.ballots if ballot.target is not None)
     eliminated = _single_favourite(named)
     return _apply(state, eliminated), eliminated
-
-
-def resolve_night(state: GameState) -> tuple[GameState, PlayerId | None]:
-    """Count the night targets, kill the victim of the pack, and close the round."""
-    victim = _single_favourite(choice.target for choice in state.night_choices)
-    return _apply(state, victim), victim
 
 
 def _single_favourite(targets: Iterable[PlayerId]) -> PlayerId | None:
