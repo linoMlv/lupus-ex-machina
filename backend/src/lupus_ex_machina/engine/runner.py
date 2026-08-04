@@ -63,6 +63,7 @@ from lupus_ex_machina.engine.night import (
     findings_of,
     night_callers,
     powers_spent_tonight,
+    prey_drawn_by_lot,
     resolve_night,
     tied_prey,
 )
@@ -70,6 +71,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day
+from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
@@ -78,6 +80,11 @@ from lupus_ex_machina.engine.views import project
 
 # Generous on purpose: with eight players, a real game lasts a handful of rounds.
 DEFAULT_MAX_ROUNDS = 100
+
+# The generator a game falls back on when the caller keeps none of its own. Any
+# fixed seed does: what matters is that a game without an explicit generator is
+# still reproducible.
+FALLBACK_SEED = 0
 
 # How many times every player may act in a day before the round is forced to a
 # close. Enough for a debate, small enough to keep a stalled table cheap.
@@ -125,16 +132,24 @@ def play_game(
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     journal: Journal | None = None,
     policy: InformationPolicy | None = None,
+    rng: Rng | None = None,
 ) -> GameResult:
     """Play a full game and return who won.
 
     A journal is opened for the game when the caller does not supply one, so
     playing never comes without a record of what happened.
+
+    Pass the generator the game was dealt from to keep one seed behind
+    everything it does (D-040). A game that does not supply one still gets a
+    deterministic generator: the only draw a running game makes is the lot that
+    settles a pack made to designate someone (D-081), and it has to be
+    reproducible either way.
     """
     run = _Run(
         agents,
         journal if journal is not None else Journal(),
         policy if policy is not None else InformationPolicy(),
+        rng if rng is not None else create_rng(FALLBACK_SEED),
     )
     state = run.open_the_game(state)
     state = run.play_night_zero(state)
@@ -156,10 +171,13 @@ def play_game(
 class _Run:
     """Bookkeeping of a single game: the agents, the journal, and what went wrong."""
 
-    def __init__(self, agents: Agents, journal: Journal, policy: InformationPolicy) -> None:
+    def __init__(
+        self, agents: Agents, journal: Journal, policy: InformationPolicy, rng: Rng
+    ) -> None:
         self._agents = agents
         self._journal = journal
         self._policy = policy
+        self._rng = rng
         self._rejected = 0
 
     # --- Phases ----------------------------------------------------------
@@ -213,6 +231,7 @@ class _Run:
         if tied:
             state = self._hold_a_runoff(state, tied)
 
+        state = self._send_the_pack_to_the_lot(state)
         self._hand_out_what_the_seers_read(state)
         self._write_down_what_was_used_up(state)
         return self._resolve(state, self._resolve_the_night, _night_outcome)
@@ -255,6 +274,17 @@ class _Run:
             if wolf.team is Team.WEREWOLVES:
                 state = self._apply(state, wolf.id, self._ask(state, wolf.id))
         return state
+
+    def _send_the_pack_to_the_lot(self, state: GameState) -> GameState:
+        """Draw a prey for a pack made to take one that still has not (D-081).
+
+        Drawn here, once, and only after the runoff has had its chance — a pack
+        settles its own tie before the lot ever settles it for them. The answer
+        goes into the state so that the resolution *reads* it: a night asked
+        twice cannot come back with two different victims.
+        """
+        drawn = prey_drawn_by_lot(state, policy=self._policy, rng=self._rng)
+        return state if drawn is None else state.with_prey_drawn(drawn)
 
     def _resolve_the_night(self, state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
         """Close the night with the options the game was configured with."""

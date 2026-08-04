@@ -24,12 +24,13 @@ from lupus_ex_machina.engine.intents import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
+from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import GameDidNotEndError, GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.engine.victory import evaluate_victory
+from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
 from lupus_ex_machina.engine.views import PlayerView
 
 PLAYER_COUNTS = range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1)
@@ -105,6 +106,54 @@ def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None
 
     with pytest.raises(GameDidNotEndError):
         play_game(state, agents, max_rounds=10)
+
+
+def test_the_same_table_ends_when_the_pack_is_made_to_designate_someone() -> None:
+    """The way out of that deadlock the configuration offers (D-078, D-081).
+
+    Same silent table, same seed: made to take someone every night, the pack
+    eats the village and wins. Nothing else about the game changed.
+    """
+    rng = create_rng(4)
+    state = create_game(8, rng=rng)
+    agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
+
+    result = play_game(
+        state,
+        agents,
+        max_rounds=10,
+        policy=InformationPolicy(require_werewolf_target=True),
+        rng=rng,
+    )
+
+    assert_properly_finished(result)
+    assert result.outcome is Outcome.WEREWOLVES_WIN
+
+
+def test_the_prey_the_lot_takes_depends_on_the_seed() -> None:
+    """What D-081 bought: the same deadlock no longer kills the same players.
+
+    A pack settled by seat took the lowest one every time, in every game.
+    """
+    victims = {_who_the_lot_took(seed) for seed in range(12)}
+
+    assert len(victims) > 1
+
+
+def _who_the_lot_took(seed: int) -> tuple[PlayerId, ...]:
+    """Play the deadlocked table with one seed and report who the pack ate."""
+    rng = create_rng(seed)
+    state = create_game(8, rng=create_rng(4))
+    agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
+
+    result = play_game(
+        state,
+        agents,
+        max_rounds=10,
+        policy=InformationPolicy(require_werewolf_target=True),
+        rng=rng,
+    )
+    return tuple(player.id for player in result.state.players if not player.alive)
 
 
 # --- Determinism ------------------------------------------------------------

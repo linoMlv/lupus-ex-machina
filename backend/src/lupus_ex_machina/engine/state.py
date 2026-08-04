@@ -83,6 +83,13 @@ class GameState(BaseModel):
     handed to an agent is derived from the state alone: a restriction only the
     caller knew about would offer moves the validator refuses.
     """
+    drawn_prey: PlayerId | None = None
+    """Whom the lot picked for a pack made to designate someone (D-078, D-081).
+
+    Held here so the draw happens once. Reading the night has to give the same
+    answer every time — the witch is shown the prey and the resolution takes it —
+    which a generator consulted at each reading could not promise.
+    """
 
     @classmethod
     def initial(cls, players: Iterable[Player]) -> "GameState":
@@ -173,8 +180,13 @@ class GameState(BaseModel):
                 "ballots": (),
                 "priority_shares": (),
                 "runoff_targets": tuple(targets),
+                "drawn_prey": None,
             }
         )
+
+    def with_prey_drawn(self, prey: PlayerId) -> "GameState":
+        """Return the state with the lot's answer written down (D-081)."""
+        return self.model_copy(update={"drawn_prey": prey})
 
     def with_power_spent_by(self, actor: PlayerId, action: RoleActionName) -> "GameState":
         """Return the state with that one-shot power used up for good."""
@@ -198,5 +210,6 @@ class GameState(BaseModel):
                 "night_choices": (),
                 "priority_shares": (),
                 "runoff_targets": (),
+                "drawn_prey": None,
             }
         )

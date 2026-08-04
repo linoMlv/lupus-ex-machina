@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.priority import tally
+from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.roles import ONE_SHOT_ACTIONS, ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 
@@ -90,24 +91,37 @@ def tied_prey(state: GameState) -> tuple[PlayerId, ...]:
 
 
 def designated_prey(state: GameState, *, policy: InformationPolicy) -> PlayerId | None:
-    """The prey the pack ends up taking, or ``None`` when it takes nobody."""
+    """The prey the pack ends up taking, or ``None`` when it takes nobody.
+
+    Stays a pure reading of the state. A pack made to designate someone (D-078)
+    has had its prey drawn before the night is resolved, and the answer is in
+    the state: asking twice cannot give two victims.
+    """
     settled = tally(state.priority_shares).designated
     if settled is not None:
         return settled
     if not policy.require_werewolf_target:
         return None
 
-    return _forced_choice(state)
+    return state.drawn_prey
 
 
-def _forced_choice(state: GameState) -> PlayerId | None:
-    """Pick for a pack that must designate someone but did not (D-078).
+def prey_drawn_by_lot(state: GameState, *, policy: InformationPolicy, rng: Rng) -> PlayerId | None:
+    """Draw a prey for a pack that must designate one but did not (D-081).
 
-    Taken from the prey it was torn between, or from every prey when it named
-    none, and settled by seat so a game replays identically (D-040). A weighted
-    draw was the other candidate in D-008; it would need the generator here, and
-    a pure resolution is worth more than the variety.
+    Drawn from the prey it was torn between, or from every prey when it named
+    none. ``None`` when there is nothing to settle: the pack chose, it is free
+    to choose nobody, or nobody is left to take.
+
+    The lot replaces the lowest seat this used to fall on, which was
+    reproducible but always spared the same players. Reproducibility is kept by
+    the generator being the game's own, seeded once (D-040).
     """
+    if not policy.require_werewolf_target:
+        return None
+    if tally(state.priority_shares).designated is not None:
+        return None
+
     torn_between = set(tied_prey(state))
     candidates = [
         player for player in prey_of(state) if not torn_between or player.id in torn_between
@@ -115,7 +129,7 @@ def _forced_choice(state: GameState) -> PlayerId | None:
     if not candidates:
         return None
 
-    return min(candidates, key=lambda player: player.seat).id
+    return rng.choice(candidates).id
 
 
 def powers_spent_tonight(state: GameState) -> tuple[tuple[PlayerId, RoleActionName], ...]:
