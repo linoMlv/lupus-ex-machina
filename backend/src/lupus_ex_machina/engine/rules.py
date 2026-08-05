@@ -143,12 +143,17 @@ class InformationOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     reveal_role_on_death: bool = Field(
-        default=False,
+        default=True,
         description="Le rôle d'un joueur qui meurt est annoncé à toute la table.",
     )
-    """Death itself is never configurable: it is always public. Only what the
-    deceased *was* may stay hidden, which is what makes the ghosts of J10 safe to
-    keep on stage (D-072, D-080)."""
+    """On by default, as classic Werewolf plays it: the role of the deceased is
+    the main engine of information the village works with, and a table that
+    learns nothing from its dead deduces very little (D-080, settled by the
+    project owner on 2026-08-05).
+
+    Death itself is never configurable: it is always public. Only what the
+    deceased *was* may be kept back, which is what makes the ghosts of J10 safe
+    to keep on stage (D-072)."""
 
     reveal_ballots_at_the_count: bool = Field(
         default=True,

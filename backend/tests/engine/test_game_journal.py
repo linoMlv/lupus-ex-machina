@@ -202,9 +202,13 @@ def test_a_revelation_names_the_role_the_player_actually_held() -> None:
         assert result.state.player(revelation.player).role is revelation.role
 
 
-def test_by_default_a_death_reveals_nothing() -> None:
-    """The engine picks the discreet default; J6 makes it a knob."""
-    assert InformationOptions().reveal_role_on_death is False
+def test_by_default_a_death_reveals_what_the_dead_player_was() -> None:
+    """Classic Werewolf, and the choice the project owner made on 2026-08-05.
+
+    Only the role is the option: the death itself is public whatever the
+    configuration says (D-072).
+    """
+    assert InformationOptions().reveal_role_on_death is True
 
 
 def test_a_revelation_is_recorded_whichever_side_the_dead_belonged_to() -> None:

@@ -48,9 +48,14 @@ def test_the_roles_default_to_the_generous_reading_of_their_powers() -> None:
 
 
 def test_information_defaults_to_what_the_table_is_told() -> None:
-    """D-080 and D-082, both settled by the project owner on 2026-08-05."""
+    """D-080 and D-082, both settled by the project owner on 2026-08-05.
+
+    The role of the deceased is announced, as classic Werewolf does: it is the
+    main engine of information the village has to work with. Death itself was
+    never configurable — it is always public (D-072).
+    """
     assert InformationOptions().model_dump() == {
-        "reveal_role_on_death": False,
+        "reveal_role_on_death": True,
         "reveal_ballots_at_the_count": True,
         "public_vote_history": True,
         "show_personalities": True,
