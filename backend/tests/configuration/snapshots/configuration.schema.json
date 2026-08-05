@@ -220,6 +220,12 @@
           "title": "Reveal Ballots At The Count",
           "type": "boolean"
         },
+        "reveal_priorities_at_the_designation": {
+          "default": true,
+          "description": "Une fois la proie désignée, la meute apprend combien chacun a mis sur qui.",
+          "title": "Reveal Priorities At The Designation",
+          "type": "boolean"
+        },
         "public_vote_history": {
           "default": true,
           "description": "L'historique des votes des tours passés reste accessible aux agents.",
@@ -323,12 +329,6 @@
           "default": false,
           "description": "La voyante annonce publiquement ce qu'elle a lu, sans dire sur qui.",
           "title": "Speaking Seer",
-          "type": "boolean"
-        },
-        "wake_witch_without_potions": {
-          "default": true,
-          "description": "La sorcière est réveillée même quand ses deux potions sont bues.",
-          "title": "Wake Witch Without Potions",
           "type": "boolean"
         },
         "witch_may_save_herself": {

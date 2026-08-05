@@ -31,10 +31,10 @@ from lupus_ex_machina.engine.events import (
     NightResolved,
     NotebookEntryRecorded,
     PackRevealed,
-    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
     PowerSpent,
+    PrioritiesRevealed,
     PriorityShared,
     PrivateReasoningRecorded,
     RoleAssigned,
@@ -130,11 +130,11 @@ class _Replay:
                 self._close_round(night.victims)
             case (
                 BallotsRevealed()
+                | PrioritiesRevealed()
                 | FloorAuctioned()
                 | FloorClaimed()
                 | VoteForced()
                 | PackRevealed()
-                | PackSpeechDelivered()
                 | SeerInspected()
                 | SeerFindingAnnounced()
                 | BallotAnnounced()

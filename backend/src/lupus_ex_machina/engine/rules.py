@@ -114,14 +114,6 @@ class RoleOptions(BaseModel):
     """Off by default: it hands the village a great deal, and the option exists
     to be turned on knowingly (D-031)."""
 
-    wake_witch_without_potions: bool = Field(
-        default=True,
-        description="La sorcière est réveillée même quand ses deux potions sont bues.",
-    )
-    """On by default. She learns whom the pack took, which she would learn at
-    dawn anyway — and a table where she suddenly stops being called would say
-    rather more than that (D-054)."""
-
     witch_may_save_herself: bool = Field(
         default=True,
         description="La sorcière peut se soigner elle-même quand la meute l'a désignée.",
@@ -162,6 +154,15 @@ class InformationOptions(BaseModel):
     """Who voted is public in real time and whom they named is not (D-051); the
     count is where that ends. Revealing it is the direct counter to models voting
     in herds, and the moment the staging of J10 is built on (D-013, D-082)."""
+
+    reveal_priorities_at_the_designation: bool = Field(
+        default=True,
+        description="Une fois la proie désignée, la meute apprend combien chacun a mis sur qui.",
+    )
+    """The night's counterpart to the count of the day (D-082). The wolves
+    spread their points blind (D-085), so this is what lets a pack coordinate
+    from one night to the next — without ever being able to answer a spread
+    while it could still be answered."""
 
     public_vote_history: bool = Field(
         default=True,

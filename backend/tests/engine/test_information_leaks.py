@@ -372,18 +372,20 @@ def test_no_view_ever_carries_a_role_other_than_its_viewers(seed: int) -> None:
             assert not (readable & foreign), f"{player.name} could read {readable & foreign}"
 
 
-@pytest.mark.parametrize("seed", FEW)
-def test_whom_someone_named_changes_nothing_in_anybody_elses_view(seed: int) -> None:
+def test_whom_someone_named_changes_nothing_in_anybody_elses_view() -> None:
     """Two games differing only by a secret must look identical to whoever is not entitled.
 
     Comparing whole views is what makes this falsifiable: a field that carried
     the target — under any name, at any depth — would make them differ. Even the
     accused must not learn they were named (D-013).
+
+    Swept over several games rather than one: a single seed can go by without a
+    named ballot ever being cast, and the property would then be true of nothing
+    at all. The count at the end is what refuses that.
     """
-    result = played(seed)
     checked = 0
 
-    for state in moments_of(result):
+    for state in (moment for seed in FEW for moment in moments_of(played(seed))):
         for rank, ballot in enumerate(state.ballots):
             if ballot.target is None:
                 continue

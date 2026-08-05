@@ -23,29 +23,26 @@ from lupus_ex_machina.engine.state import GameState
 
 
 def night_callers(state: GameState) -> tuple[Player, ...]:
-    """The living players the night wakes, in the order it wakes them.
+    """Every living player, in the order the night calls them (D-084).
 
-    Ordered by the rank the configured wake order gives their role, then by
-    seat, so two runs of the same game call the same people in the same order.
+    Everyone gets a turn, whether or not they hold a power: a turn is reading
+    one's notebook and thinking the game over, and a villager who never did
+    would start each dawn from nothing.
+
+    The roles with a power come first, in the order the configuration gives them
+    — that ordering is a rule (D-029) — and the rest follow by seat, which is a
+    sweep rather than a ranking. Two runs of the same game call the same people
+    in the same order.
     """
     order = state.rules.night.wake_order
-    return tuple(
-        sorted(
-            (
-                player
-                for player in state.living
-                if player.role in order and _has_something_to_do(state, player)
-            ),
-            key=lambda player: (order.index(player.role), player.seat),
-        )
-    )
+    return tuple(sorted(state.living, key=lambda player: (_rank_of(player, order), player.seat)))
 
 
-def _has_something_to_do(state: GameState, player: Player) -> bool:
-    """Whether waking this player is worth it, which only the witch can fail (D-054)."""
-    if player.role is not RoleName.WITCH or state.rules.roles.wake_witch_without_potions:
-        return True
-    return bool(potions_left_to(state, player.id))
+def _rank_of(player: Player, order: tuple[RoleName, ...]) -> int:
+    """Where the night calls this player: at their role's rank, or after everyone."""
+    if player.role not in order:
+        return len(order)
+    return order.index(player.role)
 
 
 def potions_left_to(state: GameState, witch: PlayerId) -> frozenset[RoleActionName]:

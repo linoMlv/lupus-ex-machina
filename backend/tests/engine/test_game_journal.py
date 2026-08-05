@@ -125,9 +125,15 @@ def test_every_vote_is_both_announced_and_recorded(seed: int) -> None:
 
 
 def test_speech_reaches_the_journal() -> None:
-    result = play(seed=1)
+    """The shared transcript is born here.
 
-    assert facts_of(result, SpeechDelivered), "the shared transcript is born here"
+    Looked for over several games: scripted agents draw whether to speak, and a
+    single seed can produce a day where the first bidder waits and the debate is
+    closed on the spot (D-060).
+    """
+    spoken = [facts_of(play(seed=seed), SpeechDelivered) for seed in range(5)]
+
+    assert any(spoken), "no game in the corpus ever put a word in the transcript"
 
 
 def test_every_death_is_written_down() -> None:

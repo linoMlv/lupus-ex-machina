@@ -25,7 +25,7 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.night import prey_of, victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.roles import ROLES, RoleActionName, Team
+from lupus_ex_machina.engine.roles import ROLES, RoleActionName
 from lupus_ex_machina.engine.state import GameState
 
 # Day 1 is a bootstrap round: the debate opens with nothing to go on, so nobody
@@ -118,16 +118,12 @@ def _validate_naming(state: GameState, intent: TakeTurn) -> None:
 
 
 def _validate_speech(state: GameState, actor: PlayerId) -> None:
-    """The floor is public by day and the pack's own at night (D-007).
+    """The floor exists by day, and by day only (D-083).
 
-    Night 0 is silent for everyone: the wolves meet without speaking (D-032),
-    which is a rule of the game rather than a limitation.
+    Nobody speaks at night, the pack included: it designates its prey in
+    silence, as at a real table. The wolves meet without a word on Night 0 too
+    (D-032) — the rule is the same one, held in one place.
     """
-    if state.phase is Phase.NIGHT:
-        if state.player(actor).team is not Team.WEREWOLVES:
-            raise IllegalIntentError(f"Player {actor} has nobody to talk to at night")
-        return
-
     if state.phase is not Phase.DAY:
         raise IllegalIntentError("Speaking is only allowed during the day")
     if state.runoff_targets:

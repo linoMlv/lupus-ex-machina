@@ -49,7 +49,6 @@ class EventKind(StrEnum):
     SEER_INSPECTED = "seer_inspected"
     SEER_FINDING_ANNOUNCED = "seer_finding_announced"
     PRIORITY_SHARED = "priority_shared"
-    PACK_SPEECH_DELIVERED = "pack_speech_delivered"
     RUNOFF_OPENED = "runoff_opened"
     VOTE_RESOLVED = "vote_resolved"
     NIGHT_RESOLVED = "night_resolved"
@@ -61,6 +60,7 @@ class EventKind(StrEnum):
     FLOOR_AUCTIONED = "floor_auctioned"
     VOTE_FORCED = "vote_forced"
     BALLOTS_REVEALED = "ballots_revealed"
+    PRIORITIES_REVEALED = "priorities_revealed"
     FLOOR_CLAIMED = "floor_claimed"
 
 
@@ -278,7 +278,12 @@ class SeerFindingAnnounced(Fact):
 
 
 class PriorityShared(Fact):
-    """A wolf spreads its points over the prey, on the pack's channel (D-008)."""
+    """A wolf spreads its points over the prey (D-008).
+
+    Its author's own, not the pack's (D-085). The wolves designate blind, so a
+    spread another wolf could read while there is still time to answer it would
+    turn the night into the herd vote the weighting exists to prevent.
+    """
 
     kind: Literal[EventKind.PRIORITY_SHARED] = EventKind.PRIORITY_SHARED
     actor: PlayerId
@@ -286,26 +291,8 @@ class PriorityShared(Fact):
 
     @property
     def audience(self) -> Visibility:
-        """The pack."""
-        return Visibility.for_role(RoleName.WEREWOLF)
-
-
-class PackSpeechDelivered(Fact):
-    """Something said on the private channel of the pack (D-007).
-
-    A fact of its own rather than a flag on public speech: the two have two
-    audiences, and one type carrying both would put the filter in charge of
-    redacting a field.
-    """
-
-    kind: Literal[EventKind.PACK_SPEECH_DELIVERED] = EventKind.PACK_SPEECH_DELIVERED
-    speaker: PlayerId
-    speech: str = Field(min_length=1)
-
-    @property
-    def audience(self) -> Visibility:
-        """The pack, and never the table."""
-        return Visibility.for_role(RoleName.WEREWOLF)
+        """The wolf who spread them, and nobody else until the designation."""
+        return Visibility.for_player(self.actor)
 
 
 class RunoffOpened(Fact):
@@ -341,6 +328,35 @@ class RevealedBallot(BaseModel):
 
     voter: PlayerId
     target: PlayerId | None = None
+
+
+class RevealedShare(BaseModel):
+    """One wolf's spread, as the pack is shown it afterwards."""
+
+    model_config = ConfigDict(frozen=True)
+
+    wolf: PlayerId
+    allocations: tuple[PriorityPoint, ...]
+
+
+class PrioritiesRevealed(Fact):
+    """What each wolf weighed, laid out for the pack (D-085).
+
+    The night's counterpart to the count of the day (D-082), and the reason the
+    spreads can be blind without the pack being blindfolded for good: what makes
+    a spread blind is that nobody can *answer* it, not that it stays secret.
+
+    Produced only when the configuration says so — an option decides whether a
+    fact exists, never who may read one (D-009).
+    """
+
+    kind: Literal[EventKind.PRIORITIES_REVEALED] = EventKind.PRIORITIES_REVEALED
+    shares: tuple[RevealedShare, ...] = ()
+
+    @property
+    def audience(self) -> Visibility:
+        """The pack, once it has designated its prey."""
+        return Visibility.for_role(RoleName.WEREWOLF)
 
 
 class BallotsRevealed(Fact):
@@ -540,7 +556,6 @@ EventPayload = Annotated[
     | SeerInspected
     | SeerFindingAnnounced
     | PriorityShared
-    | PackSpeechDelivered
     | RunoffOpened
     | VoteResolved
     | NightResolved
@@ -552,6 +567,7 @@ EventPayload = Annotated[
     | FloorAuctioned
     | VoteForced
     | BallotsRevealed
+    | PrioritiesRevealed
     | FloorClaimed,
     Field(discriminator="kind"),
 ]

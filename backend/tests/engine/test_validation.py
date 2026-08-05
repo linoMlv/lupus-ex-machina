@@ -92,14 +92,15 @@ def test_voting_is_refused_during_the_night() -> None:
         validate_intent(night(), WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
 
 
-def test_the_pack_keeps_its_own_floor_at_night() -> None:
-    """The wolves have a channel of their own once the table is asleep (D-007)."""
-    validate_intent(night(), WOLF, TakeTurn(speech="On prend Camille."))
+def test_nobody_speaks_at_night_the_pack_included() -> None:
+    """The wolves designate their prey in silence, as at a real table (D-083).
 
-
-def test_nobody_outside_the_pack_has_anyone_to_talk_to_at_night() -> None:
-    with pytest.raises(IllegalIntentError, match="nobody to talk to"):
-        validate_intent(night(), VILLAGER, TakeTurn(speech="Il y a quelqu'un ?"))
+    They had a channel of their own until 2026-08-05 (D-007, revoked): a wolf
+    gets one gesture a night, so speaking meant giving up any say in the prey.
+    """
+    for player in (WOLF, VILLAGER):
+        with pytest.raises(IllegalIntentError, match="only allowed during the day"):
+            validate_intent(night(), player, TakeTurn(speech="On prend Camille."))
 
 
 def test_the_pack_meets_in_silence_on_night_zero() -> None:

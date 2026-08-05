@@ -71,9 +71,14 @@ FORCED = GameRules(night=NightOptions(require_werewolf_target=True))
 # --- Who is woken, and when (J4.2.1) -----------------------------------------
 
 
-def test_the_night_wakes_the_seer_then_the_pack_then_the_witch() -> None:
-    """The order is a rule: the witch must see a victim the pack has designated."""
-    called = [state.role for state in night_callers(night())]
+def test_the_night_calls_the_seer_then_the_pack_then_the_witch() -> None:
+    """The order is a rule: the witch must see a victim the pack has designated.
+
+    Those who hold a power come first, in that order. Everyone else has a turn
+    too (D-084) — see ``test_night_turn.py`` — but their place in the queue is a
+    sweep by seat rather than a ranking.
+    """
+    called = [player.role for player in night_callers(night())][:4]
 
     assert called == [
         RoleName.SEER,
@@ -83,12 +88,11 @@ def test_the_night_wakes_the_seer_then_the_pack_then_the_witch() -> None:
     ]
 
 
-def test_the_night_never_wakes_a_role_with_nothing_to_do() -> None:
+def test_the_roles_with_no_power_come_after_the_ones_that_have_one() -> None:
     """The hunter fires by day and in public, even when the night killed them (D-030)."""
-    woken = {player.role for player in night_callers(night())}
+    called = [player.role for player in night_callers(night())]
 
-    assert RoleName.VILLAGER not in woken
-    assert RoleName.HUNTER not in woken
+    assert called[4:] == [RoleName.HUNTER, RoleName.VILLAGER]
 
 
 def test_the_night_never_wakes_the_dead() -> None:

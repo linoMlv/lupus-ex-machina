@@ -41,7 +41,6 @@ def test_the_roles_default_to_the_generous_reading_of_their_powers() -> None:
     assert RoleOptions().model_dump() == {
         "seer_learns_exact_role": True,
         "speaking_seer": False,
-        "wake_witch_without_potions": True,
         "witch_may_save_herself": True,
         "hunter_must_shoot": True,
     }
@@ -57,6 +56,7 @@ def test_information_defaults_to_what_the_table_is_told() -> None:
     assert InformationOptions().model_dump() == {
         "reveal_role_on_death": True,
         "reveal_ballots_at_the_count": True,
+        "reveal_priorities_at_the_designation": True,
         "public_vote_history": True,
         "show_personalities": True,
     }

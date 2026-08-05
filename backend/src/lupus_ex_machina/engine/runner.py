@@ -41,12 +41,13 @@ from lupus_ex_machina.engine.events import (
     NightPowerUsed,
     NightResolved,
     PackRevealed,
-    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
     PowerSpent,
+    PrioritiesRevealed,
     PriorityShared,
     RevealedBallot,
+    RevealedShare,
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
@@ -493,6 +494,8 @@ class _Run:
         tied = tied_prey(state)
         if tied and state.rules.night.hold_a_runoff_on_a_tie:
             state = self._hold_a_runoff(state, tied)
+
+        self._reveal_what_the_pack_weighed(state)
         return self._send_the_pack_to_the_lot(state)
 
     def _hold_a_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
@@ -504,6 +507,26 @@ class _Run:
             if wolf.team is Team.WEREWOLVES:
                 state = self._apply(state, wolf.id, self._ask(state, wolf.id))
         return state
+
+    def _reveal_what_the_pack_weighed(self, state: GameState) -> None:
+        """Show the pack who weighed what, now that answering is out of the question.
+
+        After the designation, never during: the spreads are blind so that no
+        wolf can follow another into a herd vote (D-085), and that is a property
+        of *when* they are read rather than of keeping them secret for good.
+        """
+        if not state.rules.information.reveal_priorities_at_the_designation:
+            return
+
+        self._journal.record(
+            PrioritiesRevealed(
+                shares=tuple(
+                    RevealedShare(wolf=share.actor, allocations=share.allocations)
+                    for share in state.priority_shares
+                )
+            ),
+            at=state,
+        )
 
     def _send_the_pack_to_the_lot(self, state: GameState) -> GameState:
         """Draw a prey for a pack made to take one that still has not (D-081).
@@ -679,33 +702,20 @@ class _Run:
         """Record a turn at the floor, and remember the round had it.
 
         The journal keeps the words; the state keeps only what the next auction
-        is scored against (D-002). The pack's own channel leaves no such trace:
-        the night has no auction to score, and a round of it is short by design
-        (D-007).
+        is scored against (D-002). There is one floor and it is the day's: the
+        night is silent for everyone (D-083).
         """
-        self._journal.record(self._speech_of(state, speaker, speech, turn), at=state)
-        if state.phase is Phase.NIGHT:
-            return state
-
+        self._journal.record(
+            SpeechDelivered(
+                speaker=speaker, speech=speech, addressed=turn.addressed, accused=turn.accused
+            ),
+            at=state,
+        )
         return state.with_speech_from(
             speaker,
             words=count_words(speech),
             addressed=turn.addressed,
             accused=turn.accused,
-        )
-
-    def _speech_of(
-        self, state: GameState, speaker: PlayerId, speech: str, turn: TakeTurn
-    ) -> EventPayload:
-        """Route a line to the floor it was spoken on.
-
-        The pack has its own channel at night (D-007), and what is said there is
-        a fact with its own audience rather than public speech wearing a flag.
-        """
-        if state.phase is Phase.NIGHT:
-            return PackSpeechDelivered(speaker=speaker, speech=speech)
-        return SpeechDelivered(
-            speaker=speaker, speech=speech, addressed=turn.addressed, accused=turn.accused
         )
 
     def _cast(self, state: GameState, voter: PlayerId, target: PlayerId | None = None) -> GameState:

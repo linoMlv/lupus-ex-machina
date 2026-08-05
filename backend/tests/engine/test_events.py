@@ -32,13 +32,14 @@ from lupus_ex_machina.engine.events import (
     NightResolved,
     NotebookEntryRecorded,
     PackRevealed,
-    PackSpeechDelivered,
     PhaseEntered,
     PlayerSeated,
     PowerSpent,
+    PrioritiesRevealed,
     PriorityShared,
     PrivateReasoningRecorded,
     RevealedBallot,
+    RevealedShare,
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
@@ -65,6 +66,7 @@ WHEN = datetime(2026, 8, 3, 21, 0, tzinfo=UTC)
 PACK = Visibility.for_role(RoleName.WEREWOLF)
 
 A_FEW_POINTS = PriorityPoint(target=VILLAGER, points=60)
+A_SPREAD = RevealedShare(wolf=WOLF, allocations=(A_FEW_POINTS,))
 A_FINDING = Revelation(role=RoleName.WEREWOLF)
 
 SEER = PlayerId("p4")
@@ -96,8 +98,8 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         Visibility.for_player(SEER),
     ),
     (SeerFindingAnnounced(revelation=A_FINDING), Visibility.public()),
-    (PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)), PACK),
-    (PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."), PACK),
+    (PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)), Visibility.for_player(WOLF)),
+    (PrioritiesRevealed(shares=(A_SPREAD,)), PACK),
     (RunoffOpened(targets=(VILLAGER,)), PACK),
     (VoteResolved(eliminated=VILLAGER), Visibility.public()),
     (NightResolved(victims=(VILLAGER,)), Visibility.public()),
@@ -182,11 +184,24 @@ def test_the_pack_channel_never_leaves_the_pack() -> None:
 
     for spoken in (
         PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)),
-        PackSpeechDelivered(speaker=WOLF, speech="On prend Camille."),
+        PrioritiesRevealed(shares=(A_SPREAD,)),
         RunoffOpened(targets=(VILLAGER,)),
         PackRevealed(members=(WOLF,)),
     ):
         assert not spoken.audience.reaches(villager)
+
+
+def test_a_spread_is_its_own_wolf_s_until_the_designation_is_settled() -> None:
+    """The pack designates blind (D-085): a wolf reads nobody's points but his own.
+
+    What each of them weighed is laid out afterwards, by a fact of its own —
+    which is what lets the spreads be blind without being secret for good.
+    """
+    other_wolf = Recipient(player=PlayerId("p9"), role=RoleName.WEREWOLF)
+    spread = PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,))
+
+    assert not spread.audience.reaches(other_wolf)
+    assert PrioritiesRevealed(shares=(A_SPREAD,)).audience.reaches(other_wolf)
 
 
 def test_inner_thoughts_belong_to_their_author_and_the_spectator() -> None:

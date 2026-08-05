@@ -13,11 +13,16 @@ import pytest
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import PriorityPoint, RoleAction
-from lupus_ex_machina.engine.night import night_callers, resolve_night, victim_seen_by_the_witch
+from lupus_ex_machina.engine.night import (
+    night_callers,
+    potions_left_to,
+    resolve_night,
+    victim_seen_by_the_witch,
+)
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
-from lupus_ex_machina.engine.rules import GameRules, RoleOptions
+from lupus_ex_machina.engine.rules import GameRules
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 
@@ -34,8 +39,6 @@ TABLE = (
     Player(id=VILLAGER, name="Diane", seat=3, role=RoleName.VILLAGER),
     Player(id=OTHER_VILLAGER, name="Émile", seat=4, role=RoleName.VILLAGER),
 )
-
-ASLEEP_WITHOUT_POTIONS = GameRules(roles=RoleOptions(wake_witch_without_potions=False))
 
 
 def night(rules: GameRules | None = None) -> GameState:
@@ -195,11 +198,13 @@ def test_using_a_potion_spends_it() -> None:
 # --- Being woken with nothing to pour (J4.5.4, D-054) ------------------------
 
 
-def test_by_default_she_is_woken_even_with_no_potions_left() -> None:
-    assert RoleOptions().wake_witch_without_potions is True
+def test_an_empty_handed_witch_is_called_like_anybody_else() -> None:
+    """D-054 lost its object on 2026-08-05: everyone has a turn at night (D-084).
 
-
-def test_an_empty_handed_witch_is_still_called_by_default() -> None:
+    A witch with nothing left to pour is called the way a villager is — to read
+    her notebook and think, not to act. The option that used to leave her asleep
+    could no longer decide anything.
+    """
     state = (
         night()
         .with_power_spent_by(WITCH, RoleActionName.HEAL)
@@ -207,22 +212,4 @@ def test_an_empty_handed_witch_is_still_called_by_default() -> None:
     )
 
     assert WITCH in {player.id for player in night_callers(state)}
-
-
-def test_an_empty_handed_witch_sleeps_through_when_the_setting_says_so() -> None:
-    state = (
-        night(ASLEEP_WITHOUT_POTIONS)
-        .with_power_spent_by(WITCH, RoleActionName.HEAL)
-        .with_power_spent_by(WITCH, RoleActionName.POISON)
-    )
-
-    called = {player.id for player in night_callers(state)}
-
-    assert WITCH not in called
-    assert WOLF in called, "the rest of the night is untouched"
-
-
-def test_a_witch_with_one_potion_left_is_always_called() -> None:
-    state = night(ASLEEP_WITHOUT_POTIONS).with_power_spent_by(WITCH, RoleActionName.HEAL)
-
-    assert WITCH in {player.id for player in night_callers(state)}
+    assert not potions_left_to(state, WITCH), "and she is called with nothing to pour"

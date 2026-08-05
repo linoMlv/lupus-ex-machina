@@ -129,11 +129,14 @@ class RandomAgent:
         Speaking and voting are drawn apart rather than as three cases, so
         "speak and vote at once" comes up as often as the rules allow it (D-028)
         instead of being a case somebody remembered to write.
+
+        Voting is what is left when the draw says not to speak: a turn is only
+        ever offered by day, and by day the two halves open together. There is
+        no longer a floor without a vote behind it — the night stopped offering
+        one when it fell silent (D-083).
         """
         speaking = view.may_speak and self._rng.choice((True, False))
         voting = view.may_vote and (not speaking or self._rng.choice((True, False)))
-        if not speaking and not voting:
-            return Wait()
 
         accused = self._accuses(view) if speaking else None
         return TakeTurn(

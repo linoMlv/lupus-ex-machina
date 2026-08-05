@@ -130,15 +130,11 @@ def test_a_player_who_voted_may_only_wait() -> None:
 
 
 def test_only_wolves_are_offered_the_night() -> None:
-    """The pack keeps its own floor and its own vote; nobody else has either."""
+    """The pack alone designates; nobody speaks, and nobody votes (D-083)."""
     wolf = project(night(), WOLF)
 
-    assert set(wolf.allowed_intents) == {
-        IntentKind.TAKE_TURN,
-        IntentKind.SHARE_PRIORITY,
-        IntentKind.WAIT,
-    }
-    assert (wolf.may_speak, wolf.may_vote) == (True, False), "the pack talks, it does not vote"
+    assert set(wolf.allowed_intents) == {IntentKind.SHARE_PRIORITY, IntentKind.WAIT}
+    assert (wolf.may_speak, wolf.may_vote) == (False, False), "the night is silent"
     assert project(night(), VILLAGER).allowed_intents == (IntentKind.WAIT,)
 
 
@@ -154,13 +150,14 @@ def test_a_wolf_is_never_offered_its_own_pack_as_prey() -> None:
     assert set(view.action_targets) == {VILLAGER, OTHER_VILLAGER}
 
 
-def test_a_wolf_that_already_spread_its_points_keeps_only_the_floor() -> None:
+def test_a_wolf_that_already_spread_its_points_has_nothing_left_to_do() -> None:
+    """One gesture a night, and his was the spread (D-006)."""
     state = night().with_priority_share_from(WOLF, (PriorityPoint(target=VILLAGER, points=50),))
 
     view = project(state, WOLF)
 
-    assert set(view.allowed_intents) == {IntentKind.TAKE_TURN, IntentKind.WAIT}
-    assert (view.may_speak, view.may_vote) == (True, False)
+    assert view.allowed_intents == (IntentKind.WAIT,)
+    assert (view.may_speak, view.may_vote) == (False, False)
     assert view.action_targets == ()
     assert view.priority_budget == 0
 

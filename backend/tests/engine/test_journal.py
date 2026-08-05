@@ -148,11 +148,14 @@ def test_a_villager_never_sees_the_channel_of_the_pack() -> None:
     assert "phase_entered" in seen, "public facts still get through"
 
 
-def test_a_wolf_sees_the_channel_of_its_own_pack() -> None:
-    seen = kinds_seen_by(Recipient.of(OTHER_WOLF))
+def test_a_wolf_knows_its_own_pack() -> None:
+    assert "pack_revealed" in kinds_seen_by(Recipient.of(OTHER_WOLF))
 
-    assert "pack_revealed" in seen
-    assert "priority_shared" in seen
+
+def test_a_wolf_does_not_see_what_another_wolf_weighed() -> None:
+    """The pack designates blind (D-085); the detail comes after the fact."""
+    assert "priority_shared" in kinds_seen_by(Recipient.of(WOLF)), "one reads one's own"
+    assert "priority_shared" not in kinds_seen_by(Recipient.of(OTHER_WOLF))
 
 
 def test_nobody_at_the_table_sees_another_players_role() -> None:
