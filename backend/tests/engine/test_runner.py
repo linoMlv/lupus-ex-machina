@@ -17,7 +17,15 @@ from lupus_ex_machina.agents.scripted import (
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid, DebateRules
 from lupus_ex_machina.engine.composition import MAXIMUM_PLAYERS, MINIMUM_PLAYERS
-from lupus_ex_machina.engine.events import Event, EventKind, FloorAuctioned, SpeechDelivered
+from lupus_ex_machina.engine.events import (
+    BallotAnnounced,
+    Event,
+    EventKind,
+    FloorAuctioned,
+    ForcedVoteReason,
+    SpeechDelivered,
+    VoteForced,
+)
 from lupus_ex_machina.engine.intents import (
     Intent,
     TakeTurn,
@@ -31,6 +39,7 @@ from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import (
+    DebateControl,
     GameDidNotEndError,
     GameResult,
     _Run,
@@ -506,3 +515,126 @@ def test_an_auction_is_for_the_spectator_alone() -> None:
     assert auctions, "there were auctions to check in the first place"
     for auction in auctions:
         assert auction.audience.scope is VisibilityScope.SPECTATOR
+
+
+# --- How a debate is meant to end (J5.5, D-048, D-060) -----------------------
+
+
+def a_day_played_by(
+    agents: dict[PlayerId, Agent], control: DebateControl | None = None
+) -> tuple[Event, ...]:
+    """Play one debate day with the given agents, and hand back its journal."""
+    state = create_game(8, rng=create_rng(12))
+    journal = Journal()
+    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3), control=control)
+
+    run.play_day(run.enter(state, Phase.DAY, day=2))
+    return journal.events
+
+
+def a_table_of(agent: type) -> dict[PlayerId, Agent]:
+    return {player.id: agent() for player in create_game(8, rng=create_rng(12)).players}
+
+
+def forced_votes_in(events: tuple[Event, ...]) -> list[VoteForced]:
+    return [event.payload for event in events if isinstance(event.payload, VoteForced)]
+
+
+def test_a_turn_nobody_used_means_the_debate_is_over() -> None:
+    """An auction that produced neither a word nor a ballot ends the debate.
+
+    D-060: a table with nothing left to say is put to the vote, rather than
+    spending another round of model calls on the same silence.
+    """
+    events = a_day_played_by(a_table_of(NeverVotesAgent))
+
+    forced = forced_votes_in(events)
+
+    assert forced, "the vote was forced"
+    assert forced[0].reason is ForcedVoteReason.DEBATE_EXHAUSTED
+
+
+def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
+    """The budget of turns is the other way out, and it says so in the journal."""
+
+    class TalksForever:
+        def bid(self, view: PlayerView) -> Bid:
+            return Bid(urgency=50, intention="Encore.")
+
+        def decide(self, view: PlayerView) -> Intent:
+            return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
+
+    events = a_day_played_by(a_table_of(TalksForever))
+
+    forced = forced_votes_in(events)
+
+    assert forced, "a debate that never votes is closed anyway"
+    assert forced[0].reason is ForcedVoteReason.TURN_BUDGET_SPENT
+
+
+def test_a_forced_vote_closes_the_round_for_everyone() -> None:
+    """Whatever forced it, the round ends the way D-013 says it does."""
+    events = a_day_played_by(a_table_of(NeverVotesAgent))
+
+    voters = {event.payload.voter for event in events if isinstance(event.payload, BallotAnnounced)}
+
+    assert len(voters) == 8, "every living player ends the round having voted"
+
+
+def test_the_moderator_can_cut_a_debate_short() -> None:
+    """D-048: the hand the user keeps on a debate that drags on.
+
+    Set to zero, the vote is called at once — and the journal says it was the
+    moderator, not the table running out of things to say.
+    """
+    events = a_day_played_by(a_table_of(NeverVotesAgent), control=DebateControl(turns_left=0))
+
+    forced = forced_votes_in(events)
+
+    assert forced[0].reason is ForcedVoteReason.MODERATOR
+    assert not speakers_of(events), "nobody got to speak"
+
+
+def test_the_moderator_leaves_the_debate_alone_by_default() -> None:
+    assert DebateControl().turns_left is None
+
+
+def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
+    class TalksForever:
+        def bid(self, view: PlayerView) -> Bid:
+            return Bid(urgency=50, intention="Encore.")
+
+        def decide(self, view: PlayerView) -> Intent:
+            return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
+
+    events = a_day_played_by(a_table_of(TalksForever), control=DebateControl(turns_left=1))
+
+    assert len(speakers_of(events)) == 1
+    assert forced_votes_in(events)[0].reason is ForcedVoteReason.MODERATOR
+
+
+def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
+    """What the control is for: a hand on a debate already under way (D-048).
+
+    Set before the day, it is a setting. The point of D-048 is the user watching
+    a debate drag on and stopping it, so the allowance is read again before
+    every turn rather than once at the start.
+    """
+    control = DebateControl()
+
+    class SpeaksThenCallsTime:
+        """Speaks once, and cuts the debate short as it does — as the user would."""
+
+        def bid(self, view: PlayerView) -> Bid:
+            return Bid(urgency=50, intention="Encore.")
+
+        def decide(self, view: PlayerView) -> Intent:
+            if not view.may_speak:
+                return Wait()
+            control.cut_to(0)
+            return TakeTurn(speech="Je serai bref.")
+
+    events = a_day_played_by(a_table_of(SpeaksThenCallsTime), control=control)
+
+    assert len(speakers_of(events)) == 1, "the debate stopped at the next turn"
+    assert forced_votes_in(events)[0].reason is ForcedVoteReason.MODERATOR

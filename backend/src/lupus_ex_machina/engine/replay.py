@@ -42,6 +42,7 @@ from lupus_ex_machina.engine.events import (
     SeerInspected,
     ShotFired,
     SpeechDelivered,
+    VoteForced,
     VoteResolved,
 )
 from lupus_ex_machina.engine.phases import Phase
@@ -127,6 +128,7 @@ class _Replay:
                 self._close_round(night.victims)
             case (
                 FloorAuctioned()
+                | VoteForced()
                 | PackRevealed()
                 | PackSpeechDelivered()
                 | SeerInspected()

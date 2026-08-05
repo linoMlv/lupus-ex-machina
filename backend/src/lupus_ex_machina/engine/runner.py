@@ -33,6 +33,7 @@ from lupus_ex_machina.engine.events import (
     Event,
     EventPayload,
     FloorAuctioned,
+    ForcedVoteReason,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -50,6 +51,7 @@ from lupus_ex_machina.engine.events import (
     SeerInspected,
     ShotFired,
     SpeechDelivered,
+    VoteForced,
     VoteResolved,
 )
 from lupus_ex_machina.engine.hunter import hunters_owing_a_shot, someone_to_take_along
@@ -112,6 +114,47 @@ def _night_outcome(victims: tuple[PlayerId, ...]) -> EventPayload:
     return NightResolved(victims=victims)
 
 
+def _round_progress(state: GameState) -> tuple[int, int]:
+    """What a turn at the floor can add to a round: a word said, a ballot cast.
+
+    Read off the state rather than off the intent that was played, so a refused
+    intent counts as the nothing it was (D-060).
+    """
+    return len(state.floor), len(state.ballots)
+
+
+class DebateControl:
+    """The moderator's hand on how long a debate may run (D-048).
+
+    Mutable, and consulted before every turn, because it is a control the user
+    works during the game rather than a setting chosen before it: J11 wires the
+    button to :meth:`cut_to`. Left alone, it never shortens anything.
+    """
+
+    def __init__(self, turns_left: int | None = None) -> None:
+        """Take how many turns the debate may still have, or ``None`` for no limit."""
+        self._turns_left = turns_left
+
+    @property
+    def turns_left(self) -> int | None:
+        """Turns the debate may still have, ``None`` when the user has not said."""
+        return self._turns_left
+
+    def cut_to(self, turns: int) -> None:
+        """Allow the debate that many more turns. Zero calls the vote at once."""
+        self._turns_left = turns
+
+    def spend_a_turn(self) -> None:
+        """Count one turn against the allowance, if there is one."""
+        if self._turns_left is not None:
+            self._turns_left -= 1
+
+    @property
+    def is_out_of_turns(self) -> bool:
+        """Whether the moderator has called time on the debate."""
+        return self._turns_left is not None and self._turns_left <= 0
+
+
 class GameDidNotEndError(EngineError, RuntimeError):
     """The round budget ran out — always an engine bug, never a game outcome."""
 
@@ -136,6 +179,7 @@ def play_game(
     journal: Journal | None = None,
     policy: InformationPolicy | None = None,
     debate: DebateRules | None = None,
+    control: DebateControl | None = None,
     rng: Rng | None = None,
 ) -> GameResult:
     """Play a full game and return who won.
@@ -155,6 +199,7 @@ def play_game(
         policy if policy is not None else InformationPolicy(),
         debate if debate is not None else DebateRules(),
         rng if rng is not None else create_rng(FALLBACK_SEED),
+        control=control if control is not None else DebateControl(),
     )
     state = run.open_the_game(state)
     state = run.play_night_zero(state)
@@ -183,12 +228,15 @@ class _Run:
         policy: InformationPolicy,
         debate: DebateRules,
         rng: Rng,
+        *,
+        control: DebateControl | None = None,
     ) -> None:
         self._agents = agents
         self._journal = journal
         self._policy = policy
         self._debate_rules = debate
         self._rng = rng
+        self._control = control if control is not None else DebateControl()
         self._rejected = 0
 
     # --- Phases ----------------------------------------------------------
@@ -240,11 +288,24 @@ class _Run:
         for _ in range(self._turn_budget(state)):
             if self._everyone_voted(state):
                 return state
+            if self._control.is_out_of_turns:
+                return self._force_the_vote(state, ForcedVoteReason.MODERATOR)
 
-            state, spoke = self._auction_the_floor(state)
-            if not spoke:
-                break
+            state, acted = self._auction_the_floor(state)
+            self._control.spend_a_turn()
+            if not acted:
+                return self._force_the_vote(state, ForcedVoteReason.DEBATE_EXHAUSTED)
 
+        return self._force_the_vote(state, ForcedVoteReason.TURN_BUDGET_SPENT)
+
+    def _force_the_vote(self, state: GameState, reason: ForcedVoteReason) -> GameState:
+        """Close a round the table did not close itself (D-048, D-060).
+
+        Recorded before the ballots it produces: reading the journal, a blank
+        vote from everyone at once means nothing without the line that says why
+        it was called.
+        """
+        self._journal.record(VoteForced(reason=reason), at=state)
         return self._carry_the_undecided_to_a_blank_vote(state)
 
     @staticmethod
@@ -255,9 +316,11 @@ class _Run:
     def _auction_the_floor(self, state: GameState) -> tuple[GameState, bool]:
         """Ask who wants to speak, and let the winner take their turn (D-002).
 
-        Reports whether anyone took the floor at all, which is how the caller
-        tells a debate that is still going from one that has run out of things
-        to say.
+        Reports whether the turn *did* anything — a word or a ballot — which is
+        how the caller tells a debate that is still going from one that has run
+        out of things to say (D-060). Winning the floor and then waiting counts
+        for nothing, and so does an intent the rules refused: what matters is
+        whether the round moved, not whether somebody was asked.
         """
         auction = elect(
             self._bids_of(state), floor=state.floor, rules=self._debate_rules, rng=self._rng
@@ -266,7 +329,9 @@ class _Run:
         if auction.winner is None:
             return state, False
 
-        return self._apply(state, auction.winner, self._ask(state, auction.winner)), True
+        before = _round_progress(state)
+        state = self._apply(state, auction.winner, self._ask(state, auction.winner))
+        return state, _round_progress(state) != before
 
     def _bids_of(self, state: GameState) -> dict[PlayerId, Bid]:
         """Ask everyone who still holds the floor how badly they want it.

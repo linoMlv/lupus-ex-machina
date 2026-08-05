@@ -23,6 +23,7 @@ from lupus_ex_machina.engine.events import (
     EventPayload,
     Fact,
     FloorAuctioned,
+    ForcedVoteReason,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -42,6 +43,7 @@ from lupus_ex_machina.engine.events import (
     SeerInspected,
     ShotFired,
     SpeechDelivered,
+    VoteForced,
     VoteResolved,
 )
 from lupus_ex_machina.engine.intents import PriorityPoint
@@ -108,6 +110,7 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         FloorAuctioned(scores=(BidScore(bidder=WOLF, urgency=70),), winner=WOLF),
         Visibility.spectator_only(),
     ),
+    (VoteForced(reason=ForcedVoteReason.DEBATE_EXHAUSTED), Visibility.public()),
 ]
 
 

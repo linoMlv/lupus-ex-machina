@@ -59,6 +59,7 @@ class EventKind(StrEnum):
     PRIVATE_REASONING_RECORDED = "private_reasoning_recorded"
     NOTEBOOK_ENTRY_RECORDED = "notebook_entry_recorded"
     FLOOR_AUCTIONED = "floor_auctioned"
+    VOTE_FORCED = "vote_forced"
 
 
 class Fact(BaseModel, ABC):
@@ -317,6 +318,37 @@ class RunoffOpened(Fact):
         return Visibility.for_role(RoleName.WEREWOLF)
 
 
+class ForcedVoteReason(StrEnum):
+    """Why a debate was put to the vote rather than ending on its own (D-013)."""
+
+    DEBATE_EXHAUSTED = "debate_exhausted"
+    """An auction produced neither a word nor a ballot: nobody had anything left
+    to say, and another round of bidding would only spend model calls (D-060)."""
+
+    TURN_BUDGET_SPENT = "turn_budget_spent"
+    """The day ran out of turns. A ceiling, not a rule of the game."""
+
+    MODERATOR = "moderator"
+    """The user cut the debate short (D-048)."""
+
+
+class VoteForced(Fact):
+    """The debate was closed for the table rather than by it.
+
+    Recorded, and public: a round that ends because the moderator said so, or
+    because nobody had anything left to say, did not end the way D-013 means a
+    round to end, and a spectator reading the journal should be able to tell.
+    """
+
+    kind: Literal[EventKind.VOTE_FORCED] = EventKind.VOTE_FORCED
+    reason: ForcedVoteReason
+
+    @property
+    def audience(self) -> Visibility:
+        """Public: everyone at the table is about to be made to vote."""
+        return Visibility.public()
+
+
 # --- Resolutions -------------------------------------------------------------
 
 
@@ -467,7 +499,8 @@ EventPayload = Annotated[
     | IntentRejected
     | PrivateReasoningRecorded
     | NotebookEntryRecorded
-    | FloorAuctioned,
+    | FloorAuctioned
+    | VoteForced,
     Field(discriminator="kind"),
 ]
 
