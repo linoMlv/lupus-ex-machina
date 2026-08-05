@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 à 4 sur 12 terminés.**
+**Jalons 1 à 5 sur 12 terminés.**
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -160,7 +160,15 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   *avant* que la victoire soit regardée, ce qui est la seule façon d'obtenir les dénouements attendus.
   Rien ne prend effet avant la fin de la nuit : tout y est collecté, puis réglé d'un bloc.
 
-Le débat spontané et le protocole d'enchères (jalon 5) — le cœur du projet — sont la prochaine étape.
+- **J5 — Le débat et le vote.** Le cœur du projet. La parole ne fait plus le tour de la table : après
+  chaque prise de parole, chacun dit à quel point il veut répondre, et le moteur arbitre — être
+  interpellé ou accusé rend une réponse pressante, venir de parler la fait attendre. Un tour est un
+  seul geste qui peut parler, voter, ou les deux : voter ferme le débat au prix de son propre silence,
+  et le tour se clôt quand le dernier a voté. Une égalité renvoie la table à un second vote muet,
+  limité aux joueurs à égalité. Aucun coefficient n'est écrit en dur — un test le prouve en les
+  tarifant tous à zéro.
+
+La configuration (jalon 6) est la prochaine étape.
 
 ---
 
