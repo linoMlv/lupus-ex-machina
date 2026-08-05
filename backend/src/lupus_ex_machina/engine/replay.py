@@ -21,6 +21,7 @@ from lupus_ex_machina.engine.errors import EngineError, IllegalTransitionError
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
+    BallotsRevealed,
     Event,
     FloorAuctioned,
     GameEnded,
@@ -127,7 +128,8 @@ class _Replay:
             case NightResolved() as night:
                 self._close_round(night.victims)
             case (
-                FloorAuctioned()
+                BallotsRevealed()
+                | FloorAuctioned()
                 | VoteForced()
                 | PackRevealed()
                 | PackSpeechDelivered()

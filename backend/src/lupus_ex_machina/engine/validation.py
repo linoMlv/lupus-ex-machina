@@ -121,6 +121,8 @@ def _validate_speech(state: GameState, actor: PlayerId) -> None:
 
     if state.phase is not Phase.DAY:
         raise IllegalIntentError("Speaking is only allowed during the day")
+    if state.runoff_targets:
+        raise IllegalIntentError("A runoff is a vote, not a second debate")
     _ensure_still_holds_the_floor(state, actor)
 
 
@@ -146,6 +148,10 @@ def _validate_vote(state: GameState, actor: PlayerId, vote: Vote) -> None:
         raise IllegalIntentError("On the first day, only a blank vote is allowed")
     if vote.target == actor:
         raise IllegalIntentError(f"Player {actor} cannot vote for themselves")
+    if state.runoff_targets and vote.target not in state.runoff_targets:
+        raise IllegalIntentError(
+            f"Player {vote.target} is not one of the players this runoff is between"
+        )
     _ensure_alive_target(state, vote.target)
 
 

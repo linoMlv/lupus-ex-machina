@@ -477,3 +477,39 @@ def test_one_may_not_address_or_accuse_the_dead() -> None:
 def test_one_may_not_accuse_someone_who_is_not_at_the_table() -> None:
     with pytest.raises(IllegalIntentError, match="Unknown"):
         validate_intent(day(), WOLF, TakeTurn(speech="Tu mens.", accused=UNKNOWN))
+
+
+# --- The silent runoff of a tied vote (J5.4.2, D-050, D-062) -----------------
+
+
+def runoff(state: GameState, *targets: PlayerId) -> GameState:
+    """Reopen a day as a runoff between the given players."""
+    return state.reopened_for_runoff(targets)
+
+
+def test_a_runoff_only_accepts_the_players_it_is_between() -> None:
+    state = runoff(day(), WOLF, VILLAGER)
+
+    validate_intent(state, OTHER_WOLF, TakeTurn(vote=Vote(target=WOLF)))
+    with pytest.raises(IllegalIntentError, match="runoff"):
+        validate_intent(state, OTHER_WOLF, TakeTurn(vote=Vote(target=OTHER_VILLAGER)))
+
+
+def test_a_runoff_still_accepts_a_blank_vote() -> None:
+    """Nothing forces a hand: the round may end with nobody eliminated (D-050)."""
+    validate_intent(runoff(day(), WOLF, VILLAGER), OTHER_WOLF, TakeTurn(vote=Vote()))
+
+
+def test_a_runoff_is_silent() -> None:
+    """The second round is a vote, not a second debate (D-050)."""
+    with pytest.raises(IllegalIntentError, match="runoff"):
+        validate_intent(runoff(day(), WOLF, VILLAGER), OTHER_WOLF, TakeTurn(speech="Un mot."))
+
+
+def test_a_player_at_stake_in_a_runoff_still_votes() -> None:
+    """Being named does not cost the right to vote, only to vote for oneself."""
+    state = runoff(day(), WOLF, VILLAGER)
+
+    validate_intent(state, WOLF, TakeTurn(vote=Vote(target=VILLAGER)))
+    with pytest.raises(IllegalIntentError, match="themselves"):
+        validate_intent(state, WOLF, TakeTurn(vote=Vote(target=WOLF)))

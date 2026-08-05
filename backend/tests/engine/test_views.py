@@ -186,6 +186,7 @@ def every_moment_of_a_game() -> list[GameState]:
         day(),
         day().with_ballot_from(WOLF, VILLAGER),
         day().with_players_killed([VILLAGER]),
+        day().reopened_for_runoff((WOLF, VILLAGER)),
         night(),
         night().with_priority_share_from(WOLF, a_share),
         night().with_players_killed([VILLAGER]),

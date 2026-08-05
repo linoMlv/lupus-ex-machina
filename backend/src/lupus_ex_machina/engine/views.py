@@ -255,10 +255,15 @@ def _vote_targets(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:
     """Players this one may name. Empty on Day 1, where only a blank vote is legal (D-032).
 
     Never oneself: a player cannot vote for their own elimination, which the
-    validator refuses too.
+    validator refuses too. Narrowed to the players a runoff is between while one
+    is open (D-062).
     """
     if not _may_act(state, viewer) or state.phase is not Phase.DAY:
         return ()
     if state.day == BOOTSTRAP_DAY or state.has_voted(viewer):
         return ()
-    return tuple(player.id for player in state.living if player.id != viewer)
+
+    named = tuple(player.id for player in state.living if player.id != viewer)
+    if not state.runoff_targets:
+        return named
+    return tuple(target for target in named if target in state.runoff_targets)

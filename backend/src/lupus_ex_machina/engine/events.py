@@ -60,6 +60,7 @@ class EventKind(StrEnum):
     NOTEBOOK_ENTRY_RECORDED = "notebook_entry_recorded"
     FLOOR_AUCTIONED = "floor_auctioned"
     VOTE_FORCED = "vote_forced"
+    BALLOTS_REVEALED = "ballots_revealed"
 
 
 class Fact(BaseModel, ABC):
@@ -332,6 +333,37 @@ class ForcedVoteReason(StrEnum):
     """The user cut the debate short (D-048)."""
 
 
+class RevealedBallot(BaseModel):
+    """One ballot as the count shows it: who voted, and whom they named."""
+
+    model_config = ConfigDict(frozen=True)
+
+    voter: PlayerId
+    target: PlayerId | None = None
+
+
+class BallotsRevealed(Fact):
+    """The count, laid out for the table (D-013, D-051).
+
+    Produced only when the configuration says so, which is the shape every
+    information option takes: the option decides whether the fact exists, never
+    who may read it (D-009).
+
+    All at once, and that is the point. Revealing ballots one by one would let
+    the table follow a herd; revealed together, they are also the moment the
+    staging is built on — every head turning to its target at the same instant
+    (D-075).
+    """
+
+    kind: Literal[EventKind.BALLOTS_REVEALED] = EventKind.BALLOTS_REVEALED
+    ballots: tuple[RevealedBallot, ...] = ()
+
+    @property
+    def audience(self) -> Visibility:
+        """Public: this is the count, read out to the table."""
+        return Visibility.public()
+
+
 class VoteForced(Fact):
     """The debate was closed for the table rather than by it.
 
@@ -500,7 +532,8 @@ EventPayload = Annotated[
     | PrivateReasoningRecorded
     | NotebookEntryRecorded
     | FloorAuctioned
-    | VoteForced,
+    | VoteForced
+    | BallotsRevealed,
     Field(discriminator="kind"),
 ]
 

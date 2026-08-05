@@ -30,6 +30,7 @@ from lupus_ex_machina.engine.errors import EngineError, IllegalIntentError
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
+    BallotsRevealed,
     Event,
     EventPayload,
     FloorAuctioned,
@@ -44,6 +45,7 @@ from lupus_ex_machina.engine.events import (
     PlayerSeated,
     PowerSpent,
     PriorityShared,
+    RevealedBallot,
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
@@ -74,7 +76,7 @@ from lupus_ex_machina.engine.night import (
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
-from lupus_ex_machina.engine.resolution import resolve_day
+from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState, count_words
@@ -271,8 +273,48 @@ class _Run:
         return state
 
     def play_day(self, state: GameState) -> tuple[GameState, Outcome | None]:
-        """Run the debate until everyone has voted, then resolve the vote."""
-        return self._resolve(self._debate(state), resolve_day, _vote_outcome)
+        """Run the debate, break a tie if there is one, then resolve the vote."""
+        state = self._debate(state)
+
+        tied = tied_targets(state)
+        if tied:
+            state = self._hold_a_silent_runoff(state, tied)
+
+        self._read_the_count_out(state)
+        return self._resolve(state, resolve_day, _vote_outcome)
+
+    def _read_the_count_out(self, state: GameState) -> None:
+        """Show the table who named whom, if the configuration allows it (D-013).
+
+        Before the resolution rather than with it: the count is what the table
+        reacts to, and what it leads to is the next fact along.
+        """
+        if not self._policy.reveal_ballots_at_the_count:
+            return
+
+        self._journal.record(
+            BallotsRevealed(
+                ballots=tuple(
+                    RevealedBallot(voter=ballot.voter, target=ballot.target)
+                    for ballot in state.ballots
+                )
+            ),
+            at=state,
+        )
+
+    def _hold_a_silent_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
+        """Put a tied vote back to the table, once, without a word (D-050, D-062).
+
+        No auction and no debate: the question is closed, only the answer is
+        reopened. Held once — a second tie spares everyone, which is where the
+        rule stops rather than asking again forever.
+        """
+        state = state.reopened_for_runoff(tied)
+        self._journal.record(RunoffOpened(targets=tied), at=state)
+
+        for player in state.living:
+            state = self._apply(state, player.id, self._ask(state, player.id))
+        return self._carry_the_undecided_to_a_blank_vote(state)
 
     def _debate(self, state: GameState) -> GameState:
         """Auction the floor over and over until the round closes itself (D-013).

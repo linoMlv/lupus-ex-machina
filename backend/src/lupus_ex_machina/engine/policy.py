@@ -55,6 +55,15 @@ class InformationPolicy(BaseModel):
     would not be a rule.
     """
 
+    reveal_ballots_at_the_count: bool = True
+    """Whether the table is shown who named whom once everyone has voted (D-013).
+
+    On by default. Who voted is public in real time and whom they named is not
+    (D-051); the count is where that ends. Revealing it is also the direct
+    counter to models voting in herds — a ballot cast blind cannot follow one —
+    and the moment the staging of J10 is built on (D-075).
+    """
+
     reveal_role_on_death: bool = False
     """Whether the role of a player who just died is announced (D-072).
 

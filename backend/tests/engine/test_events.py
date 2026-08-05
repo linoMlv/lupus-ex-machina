@@ -19,6 +19,7 @@ from lupus_ex_machina.engine.bidding import BidScore
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
+    BallotsRevealed,
     Event,
     EventPayload,
     Fact,
@@ -36,6 +37,7 @@ from lupus_ex_machina.engine.events import (
     PowerSpent,
     PriorityShared,
     PrivateReasoningRecorded,
+    RevealedBallot,
     RoleAssigned,
     RoleRevealed,
     RunoffOpened,
@@ -111,6 +113,10 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         Visibility.spectator_only(),
     ),
     (VoteForced(reason=ForcedVoteReason.DEBATE_EXHAUSTED), Visibility.public()),
+    (
+        BallotsRevealed(ballots=(RevealedBallot(voter=WOLF, target=VILLAGER),)),
+        Visibility.public(),
+    ),
 ]
 
 

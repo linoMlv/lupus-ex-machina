@@ -31,6 +31,22 @@ def resolve_day(state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
     return _apply(state, eliminated), () if eliminated is None else (eliminated,)
 
 
+def tied_targets(state: GameState) -> tuple[PlayerId, ...]:
+    """The players a runoff would be held between, empty when there is none.
+
+    A vote nobody named anyone in is not a tie: the table did not fail to
+    choose, it chose nobody, and putting that back to a second round would ask
+    the same question twice (D-050, D-062).
+    """
+    counted = Counter(ballot.target for ballot in state.ballots if ballot.target is not None)
+    if not counted:
+        return ()
+
+    (_, most), *_rest = counted.most_common()
+    leaders = tuple(target for target, votes in counted.items() if votes == most)
+    return () if len(leaders) == 1 else leaders
+
+
 def _single_favourite(targets: Iterable[PlayerId]) -> PlayerId | None:
     """Return the most designated player, or ``None`` when there is no clear one."""
     tally = Counter(targets)

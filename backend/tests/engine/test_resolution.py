@@ -9,7 +9,7 @@ settles them together, where the day comes down to counting ballots.
 """
 
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.resolution import resolve_day
+from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.state import GameState
 
@@ -102,3 +102,30 @@ def test_resolving_clears_the_choices_of_the_round() -> None:
     resolved, _ = resolve_day(state)
 
     assert resolved.ballots == ()
+
+
+# --- A tie is put back to the table before it spares anyone (J5.4.2, D-050) --
+
+
+def test_a_clear_vote_leaves_nothing_to_run_off() -> None:
+    state = game().with_ballot_from(WOLF, VILLAGER).with_ballot_from(VILLAGER, WOLF)
+    state = state.with_ballot_from(OTHER_VILLAGER, VILLAGER)
+
+    assert tied_targets(state) == ()
+
+
+def test_a_tie_leaves_the_players_it_is_between() -> None:
+    state = game().with_ballot_from(WOLF, VILLAGER).with_ballot_from(VILLAGER, WOLF)
+
+    assert set(tied_targets(state)) == {WOLF, VILLAGER}
+
+
+def test_blank_votes_are_not_players_to_run_off_between() -> None:
+    """A blank ballot names nobody, so it cannot tie with anyone (D-027)."""
+    state = game().with_ballot_from(WOLF).with_ballot_from(VILLAGER)
+
+    assert tied_targets(state) == ()
+
+
+def test_a_vote_nobody_named_anyone_in_has_nothing_to_run_off() -> None:
+    assert tied_targets(game()) == ()
