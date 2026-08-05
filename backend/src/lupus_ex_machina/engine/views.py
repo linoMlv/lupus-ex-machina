@@ -27,8 +27,10 @@ from lupus_ex_machina.engine.intents import (
     Vote,
     Wait,
 )
+from lupus_ex_machina.engine.night import victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import (
@@ -81,6 +83,14 @@ class PlayerView(BaseModel):
     """Powers this player may use right now, empty when they have none."""
     priority_budget: int = 0
     """Points this player may spread over the prey tonight, zero when they may not."""
+    victim_tonight: PlayerId | None = None
+    """Whom the pack settled on, shown only to a player who may answer it (D-029).
+
+    The witch is *told* the victim rather than left to guess: her potion of life
+    only saves that one player, so without this the view would offer her a power
+    and no way to aim it. Everyone else sees nothing here — it is the pack's
+    secret until dawn.
+    """
 
     @property
     def living_others(self) -> tuple[PlayerId, ...]:
@@ -123,7 +133,22 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         action_targets=_action_targets(state, viewer, actions, designating=designating),
         available_actions=actions,
         priority_budget=PRIORITY_BUDGET if designating else 0,
+        victim_tonight=_victim_shown_to(state, viewer, actions),
     )
+
+
+def _victim_shown_to(
+    state: GameState, viewer: PlayerId, actions: tuple[RoleActionName, ...]
+) -> PlayerId | None:
+    """The prey the pack took, shown to whoever holds a power that answers it.
+
+    Tied to the power rather than to the role: the witch sees the victim exactly
+    while she still has a potion of life to pour on them, which is the same
+    condition the validator puts on the potion itself.
+    """
+    if RoleActionName.HEAL not in actions:
+        return None
+    return victim_seen_by_the_witch(state, policy=InformationPolicy())
 
 
 def _allies_of(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:

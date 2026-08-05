@@ -10,7 +10,7 @@ import pytest
 
 from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.bidding import Bid
+from lupus_ex_machina.engine.bidding import Bid, DebateRules
 from lupus_ex_machina.engine.events import NightPowerUsed, PriorityShared, ShotFired
 from lupus_ex_machina.engine.intents import (
     Intent,
@@ -29,7 +29,7 @@ from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
-from lupus_ex_machina.engine.runner import GameResult, play_game
+from lupus_ex_machina.engine.runner import GameResult, _Run, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
@@ -279,3 +279,80 @@ def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() -> None:
         villagers = len(final.living_of_team(Team.VILLAGE))
 
         assert wolves == 0 or wolves > villagers or wolves + villagers == 2
+
+
+# --- The witch is shown what the pack settled on, whenever it settled --------
+
+
+class SavesWhoeverIsShown:
+    """A witch who pours her potion of life on the victim she is shown (D-029)."""
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Never asks for the floor: this seat is here for its potion."""
+        return Bid(urgency=0, intention="Rien à dire.")
+
+    def decide(self, view: PlayerView) -> Intent:
+        """Heal the prey the night shows her, if it shows her one."""
+        if RoleActionName.HEAL in view.available_actions and view.victim_tonight is not None:
+            return RoleAction(action=RoleActionName.HEAL, target=view.victim_tonight)
+        return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+
+
+class SplitsThenSettles:
+    """A wolf that ties the pack on the first round, then names one prey.
+
+    A single wolf splitting its budget evenly is the simplest way to reach the
+    tie the runoff exists for: two prey worth exactly the same.
+    """
+
+    def __init__(self) -> None:
+        """Start before the first round of the pack's vote."""
+        self._has_split = False
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Say nothing: the pack's channel is not what this test is about."""
+        return Bid(urgency=0, intention="Rien à dire.")
+
+    def decide(self, view: PlayerView) -> Intent:
+        """Split the budget evenly, then name one prey when asked a second time."""
+        if IntentKind.SHARE_PRIORITY not in view.allowed_intents or not view.action_targets:
+            return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+
+        prey = view.action_targets
+        if self._has_split:
+            return SharePriority(allocations=(PriorityPoint(target=prey[0], points=100),))
+
+        self._has_split = True
+        return SharePriority(
+            allocations=tuple(PriorityPoint(target=one, points=50) for one in prey[:2])
+        )
+
+
+def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
+    """D-029 has to hold however the pack got there.
+
+    Woken before the pack's tie was broken, she would be shown nobody, keep her
+    potion, and watch the runoff kill someone she could have saved. The order of
+    the night says she comes after the pack; that has to mean after it has
+    *finished*, runoff and all.
+    """
+    state = GameState.initial(A_TABLE_WITH_A_WITCH)
+    agents: dict[PlayerId, Agent] = {
+        PACK: SplitsThenSettles(),
+        WITCH: SavesWhoeverIsShown(),
+        PREY: SilentAgent(),
+        OTHER_PREY: SilentAgent(),
+    }
+    journal = Journal()
+    run = _Run(agents, journal, DISCREET, DebateRules(), create_rng(5))
+    opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
+
+    run.play_night(run.enter(opened, Phase.RESOLUTION))
+
+    healed = [
+        event.payload
+        for event in journal.events
+        if isinstance(event.payload, NightPowerUsed) and event.payload.action is RoleActionName.HEAL
+    ]
+
+    assert healed, "the witch was shown a victim and answered the bite"

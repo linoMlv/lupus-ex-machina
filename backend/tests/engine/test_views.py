@@ -18,7 +18,7 @@ from lupus_ex_machina.engine.intents import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.roles import RoleActionName, RoleName
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project
@@ -244,3 +244,51 @@ def test_the_view_offers_exactly_the_intent_kinds_the_validator_accepts() -> Non
             assert (IntentKind.TAKE_TURN in view.allowed_intents) == (may_speak or may_vote), (
                 f"taking a turn {where}"
             )
+
+
+# --- The witch is told whom to save, and she alone ---------------------------
+
+
+def a_night_where_the_pack_took_the_villager() -> GameState:
+    """A night the pack has settled, on a table that holds a witch."""
+    table = (
+        Player(id=WOLF, name="Adèle", seat=0, role=RoleName.WEREWOLF),
+        Player(id=OTHER_WOLF, name="Basile", seat=1, role=RoleName.WITCH),
+        Player(id=VILLAGER, name="Camille", seat=2, role=RoleName.VILLAGER),
+        Player(id=OTHER_VILLAGER, name="Diane", seat=3, role=RoleName.VILLAGER),
+    )
+    return (
+        GameState.initial(table)
+        .entering(Phase.DAY, day=1)
+        .entering(Phase.RESOLUTION)
+        .entering(Phase.NIGHT)
+        .with_priority_share_from(WOLF, (PriorityPoint(target=VILLAGER, points=100),))
+    )
+
+
+def test_the_witch_is_told_whom_the_pack_took() -> None:
+    """Her potion saves that one player and no other (D-029).
+
+    Without this she is handed a power and no way to aim it: the view offers the
+    union of what both her potions reach, which does not say which is which.
+    """
+    witch = OTHER_WOLF  # seated as the witch on this table
+
+    assert project(a_night_where_the_pack_took_the_villager(), witch).victim_tonight == VILLAGER
+
+
+def test_nobody_but_the_witch_is_told_whom_the_pack_took() -> None:
+    """It is the pack's secret until dawn, and hers only because she answers it."""
+    state = a_night_where_the_pack_took_the_villager()
+
+    for viewer in (WOLF, VILLAGER, OTHER_VILLAGER):
+        assert project(state, viewer).victim_tonight is None, viewer
+
+
+def test_a_witch_out_of_life_potions_is_told_nothing() -> None:
+    """Shown exactly while she can act on it, which is what the validator asks too."""
+    state = a_night_where_the_pack_took_the_villager().with_power_spent_by(
+        OTHER_WOLF, RoleActionName.HEAL
+    )
+
+    assert project(state, OTHER_WOLF).victim_tonight is None

@@ -75,7 +75,7 @@ from lupus_ex_machina.engine.night import (
     tied_prey,
 )
 from lupus_ex_machina.engine.phases import Phase
-from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.rng import Rng, create_rng
@@ -115,6 +115,16 @@ def _vote_outcome(victims: tuple[PlayerId, ...]) -> EventPayload:
 
 def _night_outcome(victims: tuple[PlayerId, ...]) -> EventPayload:
     return NightResolved(victims=victims)
+
+
+def _last_of_the_pack(callers: tuple[Player, ...]) -> PlayerId | None:
+    """The last wolf the night calls, or ``None`` when it calls none.
+
+    Where the pack's designation is closed. Read from the callers themselves
+    rather than counted, so a pack of one, of two, or of none all work the same.
+    """
+    wolves = [caller for caller in callers if caller.team is Team.WEREWOLVES]
+    return wolves[-1].id if wolves else None
 
 
 def _round_progress(state: GameState) -> tuple[int, int]:
@@ -441,15 +451,10 @@ class _Run:
         }
 
     def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
-        """Wake the roles in order, hold a runoff if the pack tied, then resolve."""
+        """Wake the roles in the order the night calls them, then resolve."""
         state = self.enter(state, Phase.NIGHT)
         state = self._collect_night_intents(state)
 
-        tied = tied_prey(state)
-        if tied:
-            state = self._hold_a_runoff(state, tied)
-
-        state = self._send_the_pack_to_the_lot(state)
         self._hand_out_what_the_seers_read(state)
         self._write_down_what_was_used_up(state)
         return self._resolve(state, self._resolve_the_night, _night_outcome)
@@ -479,9 +484,29 @@ class _Run:
         at the end (D-006). The day has no such guarantee — the hunter fires as
         they die — which is why its own loop cannot take the same shortcut.
         """
-        for caller in night_callers(state, policy=self._policy):
+        callers = night_callers(state, policy=self._policy)
+        last_wolf = _last_of_the_pack(callers)
+
+        for caller in callers:
             state = self._apply(state, caller.id, self._ask(state, caller.id))
+            if caller.id == last_wolf:
+                state = self._settle_what_the_pack_designates(state)
         return state
+
+    def _settle_what_the_pack_designates(self, state: GameState) -> GameState:
+        """Close the pack's designation as soon as its last wolf has answered.
+
+        Inside the round of wake-ups rather than after it, because the roles
+        woken later read the answer: the witch is shown the prey and may save
+        them (D-029). Settled afterwards, a tie broken by the runoff — or a prey
+        drawn by lot (D-081) — would kill someone she was never shown and could
+        have saved. The wake order says she comes after the pack; this is what
+        makes that mean *after it has finished*.
+        """
+        tied = tied_prey(state)
+        if tied:
+            state = self._hold_a_runoff(state, tied)
+        return self._send_the_pack_to_the_lot(state)
 
     def _hold_a_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
         """Put the tied prey back to the pack, once, without a word (D-050, D-062)."""
