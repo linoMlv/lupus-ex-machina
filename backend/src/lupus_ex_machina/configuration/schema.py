@@ -36,17 +36,23 @@ class GameConfiguration(BaseModel):
     )
     rules: GameRules = Field(
         default_factory=GameRules,
-        description="Les règles de la partie : table, rôles, information, débat, vote, nuit.",
+        title="Règles de la partie",
+        description=(
+            "Les six catégories que le moteur lit : table, rôles, information, débat, vote, nuit."
+        ),
     )
     agents: AgentOptions = Field(
         default_factory=AgentOptions,
+        title="Agents",
         description="Les modèles et les personnalités qui occupent les sièges.",
     )
     display: DisplayOptions = Field(
         default_factory=DisplayOptions,
-        description="Le rythme et les effets de la mise en scène.",
+        title="Affichage et rythme",
+        description="Le rythme des bulles et les effets de la mise en scène.",
     )
     system: SystemOptions = Field(
         default_factory=SystemOptions,
-        description="Les réglages techniques : contexte, débit, journalisation.",
+        title="Système",
+        description="Les réglages techniques : fenêtres de contexte, débit, journalisation.",
     )

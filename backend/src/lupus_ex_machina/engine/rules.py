@@ -378,21 +378,32 @@ class GameRules(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     table: TableOptions = Field(
-        default_factory=TableOptions, description="La partie : effectif, composition, graine, mode."
+        default_factory=TableOptions,
+        title="Partie",
+        description="Effectif, composition, graine, mode de jeu et siège du joueur humain.",
     )
     roles: RoleOptions = Field(
-        default_factory=RoleOptions, description="Les rôles et l'étendue de leurs pouvoirs."
+        default_factory=RoleOptions,
+        title="Rôles",
+        description="L'étendue des pouvoirs de chaque rôle, là où les règles laissent le choix.",
     )
     information: InformationOptions = Field(
         default_factory=InformationOptions,
+        title="Information et visibilité",
         description="Ce que la table et les agents ont le droit d'apprendre.",
     )
     debate: DebateOptions = Field(
-        default_factory=DebateOptions, description="Le débat : enchères de parole et limites."
+        default_factory=DebateOptions,
+        title="Débat et parole",
+        description="Les enchères de parole, leurs bonus et malus, et les limites de mots.",
     )
     vote: VoteOptions = Field(
-        default_factory=VoteOptions, description="Le vote : égalités et vote forcé."
+        default_factory=VoteOptions,
+        title="Vote",
+        description="Le sort d'une égalité, et le moment où le meneur de jeu appelle le vote.",
     )
     night: NightOptions = Field(
-        default_factory=NightOptions, description="La nuit : réveils, désignation, budget."
+        default_factory=NightOptions,
+        title="Nuit",
+        description="L'ordre des réveils, la désignation de la meute et son budget de points.",
     )
