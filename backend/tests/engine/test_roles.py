@@ -21,6 +21,7 @@ from lupus_ex_machina.engine.roles import (
     Team,
     team_of,
 )
+from lupus_ex_machina.engine.rules import NightOptions
 
 
 def test_the_five_roles_of_v1_are_registered() -> None:
@@ -62,41 +63,37 @@ def test_every_role_wins_with_the_side_it_belongs_to(name: RoleName, team: Team)
 # --- Waking order ------------------------------------------------------------
 
 
-def test_the_seer_wakes_before_the_pack_and_the_witch_after_it() -> None:
-    """The order is a rule, not a preference: the witch must see a designated victim.
+def test_the_registry_says_which_roles_the_night_calls() -> None:
+    """The structural half: a role either acts at night, or it does not.
 
-    She learns whom the pack took (D-029), so she cannot be woken before it has
-    chosen. The seer goes first, as at a real table.
+    *When* it is called is a setting the night reads (D-069), so the registry
+    saying it too would be a second place for the rank to be wrong.
     """
-    order = [
-        role.name
-        for role in sorted(
-            (role for role in ROLES.values() if role.wakes_at_night),
-            key=lambda role: role.wake_order or 0,
-        )
-    ]
+    woken = {role.name for role in ROLES.values() if role.wakes_at_night}
 
-    assert order == [RoleName.SEER, RoleName.WEREWOLF, RoleName.WITCH]
+    assert woken == {RoleName.SEER, RoleName.WEREWOLF, RoleName.WITCH}
 
 
 @pytest.mark.parametrize("name", [RoleName.VILLAGER, RoleName.HUNTER])
 def test_the_roles_with_nothing_to_do_at_night_are_never_woken(name: RoleName) -> None:
     """The hunter acts by day and in public, even when the night killed them (D-030)."""
     assert not ROLES[name].wakes_at_night
-    assert ROLES[name].wake_order is None
 
 
-def test_waking_is_read_off_the_order_rather_than_declared_twice() -> None:
-    """One field, so the two cannot end up disagreeing."""
-    for role in ROLES.values():
-        assert role.wakes_at_night == (role.wake_order is not None)
+def test_the_configured_night_calls_exactly_the_roles_that_wake() -> None:
+    """The two halves have to agree, and the schema refuses it when they do not.
+
+    Kept here as well as in the validator: this is the pair that would drift the
+    day a sixth role is added — declared as waking, and left out of the order.
+    """
+    called = set(NightOptions().wake_order)
+
+    assert called == {role.name for role in ROLES.values() if role.wakes_at_night}
 
 
-def test_two_roles_never_share_a_wake_order() -> None:
-    """A shared rank would make the order of the night depend on a dict."""
-    ranks = [role.wake_order for role in ROLES.values() if role.wakes_at_night]
-
-    assert len(ranks) == len(set(ranks))
+def test_the_decided_order_wakes_the_seer_then_the_pack_then_the_witch() -> None:
+    """The witch learns whom the pack took (D-029), so she comes after it."""
+    assert NightOptions().wake_order == (RoleName.SEER, RoleName.WEREWOLF, RoleName.WITCH)
 
 
 # --- What each role may do ---------------------------------------------------

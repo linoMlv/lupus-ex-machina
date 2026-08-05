@@ -17,6 +17,7 @@ from lupus_ex_machina.configuration.library import (
     ConfigurationLibrary,
     InvalidTemplateNameError,
     OutdatedTemplateError,
+    TemplateError,
     UnknownTemplateError,
 )
 from lupus_ex_machina.configuration.schema import CONFIGURATION_VERSION, GameConfiguration
@@ -112,3 +113,18 @@ def test_a_template_is_saved_as_readable_json(
     written = (tmp_path / "templates" / "lisible.json").read_text()
 
     assert '"player_count": 6' in written
+
+
+def test_a_template_edited_by_hand_into_something_illegal_is_refused(
+    library: ConfigurationLibrary, tmp_path: Path
+) -> None:
+    """A file meant to be read by hand will be edited by hand.
+
+    A table of forty-two players has to be refused rather than dealt.
+    """
+    library.save("bricolee", GameConfiguration())
+    saved = tmp_path / "templates" / "bricolee.json"
+    saved.write_text(saved.read_text().replace('"player_count": 8', '"player_count": 42'))
+
+    with pytest.raises(TemplateError, match="pas lisible"):
+        library.load("bricolee")

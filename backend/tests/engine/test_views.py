@@ -7,7 +7,6 @@ the role of another player must not appear anywhere in the view (GL-3).
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
-    PRIORITY_BUDGET,
     Intent,
     IntentKind,
     PriorityPoint,
@@ -19,6 +18,7 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
+from lupus_ex_machina.engine.rules import NightOptions
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project
@@ -144,7 +144,7 @@ def test_only_wolves_are_offered_the_night() -> None:
 
 def test_a_wolf_is_told_how_many_points_it_may_spread() -> None:
     """What a model needs to answer at all (D-008)."""
-    assert project(night(), WOLF).priority_budget == PRIORITY_BUDGET
+    assert project(night(), WOLF).priority_budget == NightOptions().priority_budget
     assert project(night(), VILLAGER).priority_budget == 0
 
 

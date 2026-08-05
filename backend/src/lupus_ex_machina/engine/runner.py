@@ -229,7 +229,9 @@ def play_game(
         agents,
         journal if journal is not None else Journal(),
         rng if rng is not None else create_rng(state.rules.table.seed),
-        control=control if control is not None else DebateControl(),
+        control=control
+        if control is not None
+        else DebateControl(state.rules.vote.turns_before_forced_vote),
         claim=claim if claim is not None else FloorClaim(),
     )
     state = run.open_the_game(state)
@@ -304,7 +306,7 @@ class _Run:
         state = self._debate(state)
 
         tied = tied_targets(state)
-        if tied:
+        if tied and state.rules.vote.hold_a_runoff_on_a_tie:
             state = self._hold_a_silent_runoff(state, tied)
 
         self._read_the_count_out(state)
@@ -489,7 +491,7 @@ class _Run:
         makes that mean *after it has finished*.
         """
         tied = tied_prey(state)
-        if tied:
+        if tied and state.rules.night.hold_a_runoff_on_a_tie:
             state = self._hold_a_runoff(state, tied)
         return self._send_the_pack_to_the_lot(state)
 

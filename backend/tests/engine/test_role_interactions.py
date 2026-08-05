@@ -11,7 +11,12 @@ import pytest
 from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
-from lupus_ex_machina.engine.events import NightPowerUsed, PriorityShared, ShotFired
+from lupus_ex_machina.engine.events import (
+    NightPowerUsed,
+    PriorityShared,
+    RunoffOpened,
+    ShotFired,
+)
 from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
@@ -28,6 +33,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
+from lupus_ex_machina.engine.rules import GameRules, NightOptions
 from lupus_ex_machina.engine.runner import GameResult, _Run, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
@@ -352,3 +358,27 @@ def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
     ]
 
     assert healed, "the witch was shown a victim and answered the bite"
+
+
+def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
+    """The night's runoff is a setting too (D-050), and this is what it costs.
+
+    Without it, the same split pack leaves the night empty-handed: nobody is
+    asked again, and a tie is the final word.
+    """
+    settled_at_once = GameRules(night=NightOptions(hold_a_runoff_on_a_tie=False))
+    state = GameState.initial(A_TABLE_WITH_A_WITCH, rules=settled_at_once)
+    agents: dict[PlayerId, Agent] = {
+        PACK: SplitsThenSettles(),
+        WITCH: SavesWhoeverIsShown(),
+        PREY: SilentAgent(),
+        OTHER_PREY: SilentAgent(),
+    }
+    journal = Journal()
+    run = _Run(agents, journal, create_rng(5))
+    opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
+
+    closed, _ = run.play_night(run.enter(opened, Phase.RESOLUTION))
+
+    assert not [event for event in journal.events if isinstance(event.payload, RunoffOpened)]
+    assert len(closed.living) == len(A_TABLE_WITH_A_WITCH), "a tie spares everyone at once"

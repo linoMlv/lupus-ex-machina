@@ -69,27 +69,17 @@ class Role(BaseModel):
 
     name: RoleName
     team: Team
-    wake_order: int | None = None
+    wakes_at_night: bool = False
+    """Whether the night calls this role at all.
+
+    Declared, but *when* it is called is not: the order is a setting the night
+    reads (D-069), so the registry saying it too would be a second place for the
+    rank to be wrong. What belongs here is the structural half — a role either
+    acts at night or it does not.
+    """
+
     actions: frozenset[RoleActionName] = frozenset()
     on_death: DeathTrigger | None = None
-
-    @property
-    def wakes_at_night(self) -> bool:
-        """Whether the night calls this role at all.
-
-        Read off the wake order rather than declared beside it: two fields
-        saying the same thing are two fields that end up disagreeing.
-        """
-        return self.wake_order is not None
-
-
-# The order of the night is a rule, not a preference. The witch learns whom the
-# pack took (D-029), so she cannot be woken before it has chosen; the seer goes
-# first, as at a real table. The gaps leave room for the roles a later version
-# adds without renumbering the ones already here.
-SEER_WAKES = 10
-WEREWOLVES_WAKE = 20
-WITCH_WAKES = 30
 
 
 ROLES: dict[RoleName, Role] = {
@@ -97,19 +87,19 @@ ROLES: dict[RoleName, Role] = {
     RoleName.WEREWOLF: Role(
         name=RoleName.WEREWOLF,
         team=Team.WEREWOLVES,
-        wake_order=WEREWOLVES_WAKE,
+        wakes_at_night=True,
         actions=frozenset({RoleActionName.DEVOUR}),
     ),
     RoleName.SEER: Role(
         name=RoleName.SEER,
         team=Team.VILLAGE,
-        wake_order=SEER_WAKES,
+        wakes_at_night=True,
         actions=frozenset({RoleActionName.INSPECT}),
     ),
     RoleName.WITCH: Role(
         name=RoleName.WITCH,
         team=Team.VILLAGE,
-        wake_order=WITCH_WAKES,
+        wakes_at_night=True,
         actions=frozenset({RoleActionName.HEAL, RoleActionName.POISON}),
     ),
     # The hunter never wakes: the shot is always fired by day and in front of

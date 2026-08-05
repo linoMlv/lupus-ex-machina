@@ -99,8 +99,16 @@ def elect(
     if not scored:
         return Auction()
 
-    best = scored[0].total
-    tied = [score.bidder for score in scored if score.total == best]
+    pressing = [score for score in scored if bids[score.bidder].urgency >= rules.minimum_urgency]
+    if not pressing:
+        # Everyone bid, nobody bid hard enough: the floor stays empty, which the
+        # debate reads as having run out of things to say (D-060). The bids are
+        # kept all the same — what was offered is what the coefficients are
+        # calibrated against.
+        return Auction(scores=tuple(scored))
+
+    best = pressing[0].total
+    tied = [score.bidder for score in pressing if score.total == best]
     return Auction(scores=tuple(scored), winner=rng.choice(tied))
 
 

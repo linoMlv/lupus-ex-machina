@@ -40,7 +40,12 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.engine.rules import GameRules, InformationOptions, NightOptions
+from lupus_ex_machina.engine.rules import (
+    GameRules,
+    InformationOptions,
+    NightOptions,
+    VoteOptions,
+)
 from lupus_ex_machina.engine.runner import (
     DebateControl,
     FloorClaim,
@@ -673,9 +678,11 @@ class VotesFor:
         return TakeTurn(vote=Vote(target=wanted))
 
 
-def a_tied_day(targets: dict[int, PlayerId | None]) -> tuple[GameState, tuple[Event, ...]]:
+def a_tied_day(
+    targets: dict[int, PlayerId | None], *, rules: GameRules | None = None
+) -> tuple[GameState, tuple[Event, ...]]:
     """Play a day where each seat votes for the player it was given."""
-    state = create_game(six_seats(), rng=create_rng(12))
+    state = create_game(six_seats(rules), rng=create_rng(12))
     agents: dict[PlayerId, Agent] = {
         player.id: VotesFor(targets.get(player.seat)) for player in state.players
     }
@@ -712,6 +719,21 @@ def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
     assert len(opened) == 1, "a runoff is held once, never twice"
     assert resolved[-1].eliminated is None
     assert len(closed.living) == 6
+
+
+def test_a_table_may_be_configured_to_let_a_tie_spare_everyone_at_once() -> None:
+    """The runoff is a setting (D-050): without it, a tie is the final word."""
+    state = create_game(six_seats(), rng=create_rng(12))
+    first, second = state.players[0].id, state.players[1].id
+    settled_at_once = GameRules(vote=VoteOptions(hold_a_runoff_on_a_tie=False))
+
+    closed, events = a_tied_day(
+        {0: second, 1: first, 2: first, 3: second, 4: first, 5: second},
+        rules=settled_at_once,
+    )
+
+    assert not [event for event in events if isinstance(event.payload, RunoffOpened)]
+    assert len(closed.living) == 6, "and a tie still spares everyone"
 
 
 def test_a_vote_that_settles_needs_no_runoff() -> None:

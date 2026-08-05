@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
-    PRIORITY_BUDGET,
     Intent,
     IntentKind,
     PriorityPoint,
@@ -131,7 +130,7 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         vote_targets=_vote_targets(state, viewer),
         action_targets=_action_targets(state, viewer, actions, designating=designating),
         available_actions=actions,
-        priority_budget=PRIORITY_BUDGET if designating else 0,
+        priority_budget=state.rules.night.priority_budget if designating else 0,
         victim_tonight=_victim_shown_to(state, viewer, actions),
     )
 

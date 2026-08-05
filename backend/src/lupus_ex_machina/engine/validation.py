@@ -15,7 +15,6 @@ from typing import assert_never
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.hunter import hunters_owing_a_shot
 from lupus_ex_machina.engine.intents import (
-    PRIORITY_BUDGET,
     Intent,
     RoleAction,
     SharePriority,
@@ -42,7 +41,7 @@ def validate_intent(state: GameState, actor: PlayerId, intent: Intent) -> None:
 
     match intent:
         case Wait():
-            return
+            _validate_waiting(state)
         case TakeTurn():
             _validate_turn(state, actor, intent)
         case RoleAction():
@@ -51,6 +50,17 @@ def validate_intent(state: GameState, actor: PlayerId, intent: Intent) -> None:
             _validate_priority_share(state, actor, intent)
         case _:  # pragma: no cover - the union is closed, mypy proves this is dead
             assert_never(intent)
+
+
+def _validate_waiting(state: GameState) -> None:
+    """Doing nothing with one's turn is legal, and a table may forbid it (D-048).
+
+    Only during the debate. Night 0 offers no action at all (D-032), and a night
+    calls nobody who has nothing to do, so refusing silence there would deadlock
+    a round rather than sharpen it.
+    """
+    if state.phase is Phase.DAY and not state.rules.debate.waiting_allowed:
+        raise IllegalIntentError("This game does not allow waiting out the debate")
 
 
 # --- Actor ------------------------------------------------------------------
@@ -207,9 +217,12 @@ def _validate_healing(state: GameState, actor: PlayerId, target: PlayerId) -> No
     """The potion of life answers the night's attack, and nothing else (D-029).
 
     It is poured on the prey the pack settled on — possibly the witch herself,
-    which is the only way she survives a night.
+    which is the only way she survives a night, and the one part of this a table
+    may switch off.
     """
     _ensure_the_potion_is_still_full(state, actor, RoleActionName.HEAL)
+    if target == actor and not state.rules.roles.witch_may_save_herself:
+        raise IllegalIntentError(f"Player {actor} may not pour the potion of life on themselves")
 
     taken = victim_seen_by_the_witch(state)
     if taken is None or target != taken:
@@ -253,9 +266,10 @@ def _validate_priority_share(state: GameState, actor: PlayerId, intent: SharePri
 
     if state.has_acted_tonight(actor):
         raise IllegalIntentError(f"Player {actor} has already spread their points tonight")
-    if intent.spent > PRIORITY_BUDGET:
+    budget = state.rules.night.priority_budget
+    if intent.spent > budget:
         raise IllegalIntentError(
-            f"A wolf spreads at most {PRIORITY_BUDGET} points, and this one spreads {intent.spent}"
+            f"A wolf spreads at most {budget} points, and this one spreads {intent.spent}"
         )
 
     named = [allocation.target for allocation in intent.allocations]

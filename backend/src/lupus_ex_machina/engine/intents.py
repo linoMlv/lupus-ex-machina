@@ -103,12 +103,6 @@ class RoleAction(_BaseIntent):
     target: PlayerId = Field(description="Le joueur que tu vises.")
 
 
-#: How many points a wolf spreads over the prey in one night (D-008). A ceiling
-#: rather than a quota: spending less is a legal choice, and it costs the wolf
-#: influence over the tally, which is penalty enough.
-PRIORITY_BUDGET = 100
-
-
 class PriorityPoint(BaseModel):
     """Points a wolf puts on one prey. Negative means "anyone but them"."""
 
@@ -134,8 +128,8 @@ class SharePriority(_BaseIntent):
     allocations: tuple[PriorityPoint, ...] = Field(
         min_length=1,
         description=(
-            f"Répartis jusqu'à {PRIORITY_BUDGET} points entre les proies, "
-            "en comptant les points négatifs dans ton budget."
+            "Répartis ton budget de points entre les proies, en comptant les points "
+            "négatifs dans ce budget. Le total dont tu disposes t'est indiqué."
         ),
     )
 
