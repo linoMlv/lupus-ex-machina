@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 à 5 sur 12 terminés.**
+**Jalons 1 à 6 sur 12 terminés.**
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -168,7 +168,15 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   limité aux joueurs à égalité. Aucun coefficient n'est écrit en dur — un test le prouve en les
   tarifant tous à zéro.
 
-La configuration (jalon 6) est la prochaine étape.
+- **J6 — La configuration.** Tout ce qu'une partie peut être réglée est décrit par un schéma unique,
+  d'où l'interface dérivera son formulaire : effectif et composition, étendue des pouvoirs de chaque
+  rôle, ce que la table a le droit d'apprendre, coefficients du débat, sort des égalités, ordre des
+  réveils. Les règles voyagent **dans la partie elle-même**, si bien que ce qu'un joueur se voit
+  offrir et ce que le moteur accepte ne peuvent pas être jugés sous deux règlements différents.
+  Aucune valeur de jeu ne reste écrite dans le code — un test balaie le moteur pour s'en assurer — et
+  une configuration se sauvegarde, se recharge et se partage.
+
+La couche LLM et les agents (jalon 7) sont la prochaine étape.
 
 ---
 
