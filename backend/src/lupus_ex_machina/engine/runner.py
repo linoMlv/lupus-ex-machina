@@ -1,9 +1,10 @@
 """Playing a game from Night 0 to the end, and writing down what happened.
 
-The loop is deliberately plain here: everyone speaks in seat order, and a round
-ends when everyone has voted (D-013). The bidding protocol that decides *who*
-speaks is the heart of the project, and it belongs to J5 — putting a placeholder
-for it now would only have to be undone.
+A day is a series of auctions: the floor is won, never handed round the table
+(D-002), and the round ends when the last player votes (D-013). Those two rules
+are what makes a debate a debate here — speaking costs the most in the auction
+that follows, and voting buys the end of the round at the price of one's own
+silence.
 
 Every change the game goes through is recorded as a fact (D-040). Two habits
 keep that honest: a phase is never entered except through :meth:`_Run.enter`,
@@ -11,7 +12,7 @@ which transitions and records in one move, and a ballot is never cast except
 through :meth:`_Run._cast`. A caller that could do one without the other is a
 caller that eventually does.
 
-Two safety nets keep a game finite. Inside a day, a budget of speaking rounds
+Two safety nets keep a game finite. Inside a day, a budget of turns at the floor
 after which the remaining players are carried to a blank vote: waiting forever is
 legal (D-048), so the round needs its own way out. Around the whole game, a
 budget of rounds whose only purpose is to turn a hypothetical deadlock into a
@@ -24,12 +25,14 @@ from typing import assert_never
 from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.bidding import Bid, DebateRules, elect
 from lupus_ex_machina.engine.errors import EngineError, IllegalIntentError
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
     Event,
     EventPayload,
+    FloorAuctioned,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -85,9 +88,10 @@ DEFAULT_MAX_ROUNDS = 100
 # still reproducible.
 FALLBACK_SEED = 0
 
-# How many times every player may act in a day before the round is forced to a
-# close. Enough for a debate, small enough to keep a stalled table cheap.
-SPEAKING_ROUNDS_PER_DAY = 8
+# How many turns at the floor a day may hold, per living player. A ceiling on
+# model calls (GL-7), not a rule: a debate is meant to end when the last player
+# votes (D-013), or when nobody has anything left to say (D-060).
+TURNS_PER_PLAYER_PER_DAY = 5
 
 Agents = Mapping[PlayerId, Agent]
 
@@ -131,6 +135,7 @@ def play_game(
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     journal: Journal | None = None,
     policy: InformationPolicy | None = None,
+    debate: DebateRules | None = None,
     rng: Rng | None = None,
 ) -> GameResult:
     """Play a full game and return who won.
@@ -148,6 +153,7 @@ def play_game(
         agents,
         journal if journal is not None else Journal(),
         policy if policy is not None else InformationPolicy(),
+        debate if debate is not None else DebateRules(),
         rng if rng is not None else create_rng(FALLBACK_SEED),
     )
     state = run.open_the_game(state)
@@ -171,11 +177,17 @@ class _Run:
     """Bookkeeping of a single game: the agents, the journal, and what went wrong."""
 
     def __init__(
-        self, agents: Agents, journal: Journal, policy: InformationPolicy, rng: Rng
+        self,
+        agents: Agents,
+        journal: Journal,
+        policy: InformationPolicy,
+        debate: DebateRules,
+        rng: Rng,
     ) -> None:
         self._agents = agents
         self._journal = journal
         self._policy = policy
+        self._debate_rules = debate
         self._rng = rng
         self._rejected = 0
 
@@ -212,14 +224,63 @@ class _Run:
 
     def play_day(self, state: GameState) -> tuple[GameState, Outcome | None]:
         """Run the debate until everyone has voted, then resolve the vote."""
-        for _ in range(SPEAKING_ROUNDS_PER_DAY):
-            if self._everyone_voted(state):
-                break
-            state = self._collect_day_intents(state)
-        else:
-            state = self._carry_the_undecided_to_a_blank_vote(state)
+        return self._resolve(self._debate(state), resolve_day, _vote_outcome)
 
-        return self._resolve(state, resolve_day, _vote_outcome)
+    def _debate(self, state: GameState) -> GameState:
+        """Auction the floor over and over until the round closes itself (D-013).
+
+        The round ends when the last player votes, and nothing else ends it:
+        that is the arbitrage the whole debate rests on — keep talking and leave
+        the round open, or close it at the price of your own silence.
+
+        The budget of turns is a safety net around that, not a rule of the game.
+        It stops a table that never votes from spending an unbounded number of
+        model calls (GL-7); the ways a debate is *meant* to end are in J5.5.
+        """
+        for _ in range(self._turn_budget(state)):
+            if self._everyone_voted(state):
+                return state
+
+            state, spoke = self._auction_the_floor(state)
+            if not spoke:
+                break
+
+        return self._carry_the_undecided_to_a_blank_vote(state)
+
+    @staticmethod
+    def _turn_budget(state: GameState) -> int:
+        """How many turns at the floor a single day may hold at the very most."""
+        return TURNS_PER_PLAYER_PER_DAY * len(state.living)
+
+    def _auction_the_floor(self, state: GameState) -> tuple[GameState, bool]:
+        """Ask who wants to speak, and let the winner take their turn (D-002).
+
+        Reports whether anyone took the floor at all, which is how the caller
+        tells a debate that is still going from one that has run out of things
+        to say.
+        """
+        auction = elect(
+            self._bids_of(state), floor=state.floor, rules=self._debate_rules, rng=self._rng
+        )
+        self._journal.record(FloorAuctioned(scores=auction.scores, winner=auction.winner), at=state)
+        if auction.winner is None:
+            return state, False
+
+        return self._apply(state, auction.winner, self._ask(state, auction.winner)), True
+
+    def _bids_of(self, state: GameState) -> dict[PlayerId, Bid]:
+        """Ask everyone who still holds the floor how badly they want it.
+
+        Whoever just spoke is not asked (D-002). The recency penalty would very
+        likely have settled it anyway, but not asking is also one model call
+        saved per turn, on the one call a game makes most often (GL-7).
+        """
+        just_spoke = state.floor[-1].speaker if state.floor else None
+        return {
+            player.id: self._agents[player.id].bid(project(state, player.id))
+            for player in state.living
+            if not state.has_voted(player.id) and player.id != just_spoke
+        }
 
     def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
         """Wake the roles in order, hold a runoff if the pack tied, then resolve."""
@@ -296,13 +357,6 @@ class _Run:
         return state
 
     # --- Steps -----------------------------------------------------------
-
-    def _collect_day_intents(self, state: GameState) -> GameState:
-        for player in state.living:
-            if state.has_voted(player.id):
-                continue
-            state = self._apply(state, player.id, self._ask(state, player.id))
-        return state
 
     def _carry_the_undecided_to_a_blank_vote(self, state: GameState) -> GameState:
         for player in state.living:

@@ -7,8 +7,13 @@ moves the view declares legal, so they never produce a refused intent.
 The exception is :class:`RogueAgent`, which does nothing else. A game is only
 half exercised by agents that behave: models will not, and the engine's refusals
 are a normal path that deserves to be walked as often as the others.
+
+Each of them also bids for the floor (D-002). The bids are blunt on purpose —
+what a scripted agent is for is exercising the protocol, not playing well — but
+they differ enough between agents that an auction has something to arbitrate.
 """
 
+from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
@@ -31,6 +36,10 @@ class SilentAgent:
     Useful as a floor: a game where everyone stays silent must still terminate.
     """
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Want the floor as little as the scale allows."""
+        return Bid(urgency=0, intention="Rien à dire.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Wait, unless a vote is possible — then vote blank."""
         if view.may_vote:
@@ -44,6 +53,10 @@ class AlwaysAccuseAgent:
     The mirror image of the silent agent: it closes rounds as fast as possible,
     which exercises eliminations and the end conditions.
     """
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Want the floor as much as the scale allows."""
+        return Bid(urgency=100, intention="Accuser.")
 
     def decide(self, view: PlayerView) -> Intent:
         """Put everything on the first prey, or vote against the first target."""
@@ -68,6 +81,10 @@ class RogueAgent:
     only way a test about them can be sure it is testing anything at all.
     """
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid like anyone else — what it does with the floor is the point."""
+        return Bid(urgency=50, intention="Agir.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Play an intent the rules refuse: the pack never designates one by one."""
         prey = view.living_others[0] if view.living_others else view.self_id
@@ -84,6 +101,10 @@ class RandomAgent:
     def __init__(self, rng: Rng) -> None:
         """Take the generator every draw of this agent goes through."""
         self._rng = rng
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Want the floor to a degree drawn at random, like everything else."""
+        return Bid(urgency=self._rng.randint(0, 100), intention="Peut-être parler.")
 
     def decide(self, view: PlayerView) -> Intent:
         """Pick a legal move at random."""

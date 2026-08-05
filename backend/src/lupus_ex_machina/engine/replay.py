@@ -22,6 +22,7 @@ from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
     Event,
+    FloorAuctioned,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -125,7 +126,8 @@ class _Replay:
             case NightResolved() as night:
                 self._close_round(night.victims)
             case (
-                PackRevealed()
+                FloorAuctioned()
+                | PackRevealed()
                 | PackSpeechDelivered()
                 | SeerInspected()
                 | SeerFindingAnnounced()

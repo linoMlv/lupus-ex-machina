@@ -15,12 +15,14 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
+from lupus_ex_machina.engine.bidding import BidScore
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
     BallotCast,
     Event,
     EventPayload,
     Fact,
+    FloorAuctioned,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -102,6 +104,10 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         Visibility.for_player(WOLF),
     ),
     (NotebookEntryRecorded(player=WOLF, note="Camille pivote vite."), Visibility.for_player(WOLF)),
+    (
+        FloorAuctioned(scores=(BidScore(bidder=WOLF, urgency=70),), winner=WOLF),
+        Visibility.spectator_only(),
+    ),
 ]
 
 

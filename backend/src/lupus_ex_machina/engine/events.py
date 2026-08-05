@@ -23,6 +23,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from lupus_ex_machina.engine.bidding import BidScore
 from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.night import Revelation
 from lupus_ex_machina.engine.phases import Phase
@@ -57,6 +58,7 @@ class EventKind(StrEnum):
     GAME_ENDED = "game_ended"
     PRIVATE_REASONING_RECORDED = "private_reasoning_recorded"
     NOTEBOOK_ENTRY_RECORDED = "notebook_entry_recorded"
+    FLOOR_AUCTIONED = "floor_auctioned"
 
 
 class Fact(BaseModel, ABC):
@@ -370,6 +372,25 @@ class GameEnded(Fact):
 # --- What only the audience sees ---------------------------------------------
 
 
+class FloorAuctioned(Fact):
+    """One round of bidding for the floor, winner and losers alike (D-002).
+
+    Kept whole, and kept for the spectator. What a player wanted to say and how
+    badly they wanted to say it is not something the table is entitled to — but
+    it is what the losers of an auction are staged reacting to (D-075), and the
+    only material there will ever be for calibrating the coefficients.
+    """
+
+    kind: Literal[EventKind.FLOOR_AUCTIONED] = EventKind.FLOOR_AUCTIONED
+    scores: tuple[BidScore, ...] = ()
+    winner: PlayerId | None = None
+
+    @property
+    def audience(self) -> Visibility:
+        """The spectator alone: an unspoken intention stays unspoken."""
+        return Visibility.spectator_only()
+
+
 class IntentRejected(Fact):
     """An agent asked for something the rules refuse.
 
@@ -445,7 +466,8 @@ EventPayload = Annotated[
     | GameEnded
     | IntentRejected
     | PrivateReasoningRecorded
-    | NotebookEntryRecorded,
+    | NotebookEntryRecorded
+    | FloorAuctioned,
     Field(discriminator="kind"),
 ]
 

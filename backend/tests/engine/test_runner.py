@@ -15,8 +15,9 @@ from lupus_ex_machina.agents.scripted import (
     SilentAgent,
 )
 from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.bidding import Bid, DebateRules
 from lupus_ex_machina.engine.composition import MAXIMUM_PLAYERS, MINIMUM_PLAYERS
-from lupus_ex_machina.engine.events import Event, EventKind
+from lupus_ex_machina.engine.events import Event, EventKind, FloorAuctioned, SpeechDelivered
 from lupus_ex_machina.engine.intents import (
     Intent,
     TakeTurn,
@@ -39,6 +40,7 @@ from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
 from lupus_ex_machina.engine.views import PlayerView
+from lupus_ex_machina.engine.visibility import VisibilityScope
 
 PLAYER_COUNTS = range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1)
 
@@ -262,6 +264,10 @@ class TooEagerOnNightZeroAgent:
         """Take the generator the sane half of this agent draws from."""
         self._sane = RandomAgent(rng=rng)
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid flatly: what this agent is for is what it does with the floor."""
+        return Bid(urgency=50, intention="Jouer.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Speak out of turn on Night 0, then play normally."""
         if view.phase is Phase.NIGHT_ZERO:
@@ -290,6 +296,10 @@ def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
 class NeverVotesAgent:
     """Waits forever: legal (D-048), and a way to stall a round."""
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid flatly: what this agent is for is what it does with the floor."""
+        return Bid(urgency=50, intention="Jouer.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Never do anything."""
         return Wait()
@@ -312,6 +322,9 @@ def test_the_engine_refuses_to_loop_forever() -> None:
     """The round budget is a safety net, not a rule: exceeding it is a bug."""
 
     class ImmortalAgent:
+        def bid(self, view: PlayerView) -> Bid:
+            return Bid(urgency=50, intention="Voter.")
+
         def decide(self, view: PlayerView) -> Intent:
             return TakeTurn(vote=Vote())  # nobody ever dies
 
@@ -333,6 +346,10 @@ class TakesOneTurn:
         self._turn = turn
         self._played = False
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid flatly: what this agent is for is what it does with the floor."""
+        return Bid(urgency=50, intention="Jouer.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Play the turn once, if the rules are offering it."""
         if self._played or not (view.may_speak or view.may_vote):
@@ -346,7 +363,9 @@ def one_turn_of(turn: TakeTurn) -> tuple[GameState, PlayerId, tuple[Event, ...]]
     state = create_game(8, rng=create_rng(11)).entering(Phase.DAY, day=2)
     actor = state.living[0].id
     journal = Journal()
-    run = _Run({actor: TakesOneTurn(turn)}, journal, InformationPolicy(), create_rng(1))
+    run = _Run(
+        {actor: TakesOneTurn(turn)}, journal, InformationPolicy(), DebateRules(), create_rng(1)
+    )
 
     return run._apply(state, actor, turn), actor, journal.events
 
@@ -399,3 +418,91 @@ def test_a_turn_remembers_whom_it_addressed_and_accused() -> None:
     assert after.floor[0].addressed == target
     assert after.floor[0].accused == target
     assert after.floor[0].speaker == speaker
+
+
+# --- The floor is auctioned, not passed round the table (J5.3.3, D-002) ------
+
+
+class Insistent:
+    """Wants the floor as much as the scale allows, and says so at length."""
+
+    def __init__(self, urgency: int) -> None:
+        """Take how badly this seat wants to speak."""
+        self._urgency = urgency
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Always bid the same, so a test can reason about the order."""
+        return Bid(urgency=self._urgency, intention="Parler.")
+
+    def decide(self, view: PlayerView) -> Intent:
+        """Speak while the floor is open, then vote blank to close the round."""
+        if view.may_speak:
+            return TakeTurn(speech="Je prends la parole.")
+        return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+
+
+def a_day_of(urgencies: dict[int, int]) -> tuple[GameState, tuple[Event, ...]]:
+    """Play one debate day where each seat bids the urgency it was given.
+
+    The day alone rather than a whole game: what the auction does is the thing
+    under test, and a game would drown it in nights and resolutions.
+    """
+    state = create_game(8, rng=create_rng(12))
+    agents: dict[PlayerId, Agent] = {
+        player.id: Insistent(urgencies[player.seat]) for player in state.players
+    }
+    journal = Journal()
+    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3))
+
+    run.play_day(run.enter(state, Phase.DAY, day=2))
+    return state, journal.events
+
+
+def auctions_in(events: tuple[Event, ...]) -> list[FloorAuctioned]:
+    return [event.payload for event in events if isinstance(event.payload, FloorAuctioned)]
+
+
+def speakers_of(events: tuple[Event, ...]) -> list[PlayerId]:
+    return [event.payload.speaker for event in events if isinstance(event.payload, SpeechDelivered)]
+
+
+def test_the_most_pressing_player_speaks_first_whatever_their_seat() -> None:
+    """The whole point of the auction: the floor is won, not handed round.
+
+    Seat 7 is last in every ordering the engine had before this; wanting it more
+    than anyone else has to be enough to speak first.
+    """
+    state, events = a_day_of({seat: (100 if seat == 7 else 10) for seat in range(8)})
+
+    assert speakers_of(events)[0] == state.players[7].id
+
+
+def test_holding_the_floor_is_what_costs_the_most_in_the_next_auction() -> None:
+    """The anti-monopoly of D-002: nobody speaks twice in a row while others want to."""
+    _, events = a_day_of(dict.fromkeys(range(8), 50))
+
+    spoken = speakers_of(events)
+
+    assert len(spoken) > 1, "the day had a debate at all"
+    assert all(first != second for first, second in itertools.pairwise(spoken))
+
+
+def test_every_bid_is_written_down_including_the_losing_ones() -> None:
+    """The raw material of the staging (D-075) and of tuning the coefficients."""
+    _, events = a_day_of({seat: seat * 10 for seat in range(8)})
+
+    auctions = auctions_in(events)
+
+    assert auctions, "an auction is a fact of the game"
+    assert len(auctions[0].scores) > 1, "the losers are kept too"
+
+
+def test_an_auction_is_for_the_spectator_alone() -> None:
+    """What a player wanted to say is not something the table gets to know."""
+    _, events = a_day_of(dict.fromkeys(range(8), 50))
+
+    auctions = auctions_in(events)
+
+    assert auctions, "there were auctions to check in the first place"
+    for auction in auctions:
+        assert auction.audience.scope is VisibilityScope.SPECTATOR

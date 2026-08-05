@@ -10,6 +10,7 @@ import pytest
 
 from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import NightPowerUsed, PriorityShared, ShotFired
 from lupus_ex_machina.engine.intents import (
     Intent,
@@ -43,6 +44,10 @@ DISCREET = InformationPolicy()
 class HuntsFirst:
     """A wolf that always puts its whole budget on the lowest-seated prey."""
 
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid flatly: what this agent is for is what it does with the floor."""
+        return Bid(urgency=50, intention="Jouer.")
+
     def decide(self, view: PlayerView) -> Intent:
         """Weigh the first prey, otherwise stay out of the way."""
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.action_targets:
@@ -62,6 +67,10 @@ class AimsAt:
     def __init__(self, target: PlayerId) -> None:
         """Take the player this agent will shoot when it gets the chance."""
         self._target = target
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Bid flatly: what this agent is for is what it does with the floor."""
+        return Bid(urgency=50, intention="Jouer.")
 
     def decide(self, view: PlayerView) -> Intent:
         """Shoot the named player, otherwise vote blank or wait."""

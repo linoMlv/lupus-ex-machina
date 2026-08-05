@@ -10,6 +10,7 @@ model be plugged in later without weakening the rules.
 
 from typing import Protocol, runtime_checkable
 
+from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.intents import Intent
 from lupus_ex_machina.engine.views import PlayerView
 
@@ -17,6 +18,15 @@ from lupus_ex_machina.engine.views import PlayerView
 @runtime_checkable
 class Agent(Protocol):
     """Something able to play a seat."""
+
+    def bid(self, view: PlayerView) -> Bid:
+        """Return how badly this player wants the floor right now (D-002).
+
+        Asked far more often than :meth:`decide` — once per player per turn at
+        the floor — so it is the call a game spends most of its budget on, and
+        the one that has to stay short (GL-7).
+        """
+        ...  # pragma: no cover - a Protocol body carries no behaviour
 
     def decide(self, view: PlayerView) -> Intent:
         """Return what this player wants to do, given what they know."""
