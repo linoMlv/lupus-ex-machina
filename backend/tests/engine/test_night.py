@@ -22,9 +22,9 @@ from lupus_ex_machina.engine.night import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.rules import GameRules, NightOptions
 from lupus_ex_machina.engine.state import GameState
 
 WOLF = PlayerId("p0")
@@ -44,9 +44,14 @@ TABLE = (
 )
 
 
-def night(state: GameState | None = None) -> GameState:
-    base = state or GameState.initial(TABLE)
+def night(state: GameState | None = None, *, rules: GameRules | None = None) -> GameState:
+    base = state or GameState.initial(TABLE, rules=rules)
     return base.entering(Phase.DAY, day=1).entering(Phase.RESOLUTION).entering(Phase.NIGHT)
+
+
+def forced_night(state: GameState | None = None) -> GameState:
+    """A night the pack may not leave empty-handed (D-078)."""
+    return night(state, rules=FORCED)
 
 
 def shared(state: GameState, actor: PlayerId, **points: int) -> GameState:
@@ -60,8 +65,7 @@ def shared(state: GameState, actor: PlayerId, **points: int) -> GameState:
     )
 
 
-DISCREET = InformationPolicy()
-FORCED = InformationPolicy(require_werewolf_target=True)
+FORCED = GameRules(night=NightOptions(require_werewolf_target=True))
 
 
 # --- Who is woken, and when (J4.2.1) -----------------------------------------
@@ -105,7 +109,7 @@ def test_wolves_are_woken_in_seat_order_within_their_turn() -> None:
 
 def test_recording_a_share_kills_nobody() -> None:
     """The whole reason the night is resolved in one go (D-006)."""
-    state = shared(night(), WOLF, p5=100)
+    state = shared(forced_night(), WOLF, p5=100)
 
     assert state.is_alive(VILLAGER)
     assert len(state.living) == len(TABLE)
@@ -114,7 +118,7 @@ def test_recording_a_share_kills_nobody() -> None:
 def test_the_victim_only_dies_when_the_night_is_resolved() -> None:
     state = shared(shared(night(), WOLF, p5=60), OTHER_WOLF, p5=40)
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert victims == (VILLAGER,)
     assert not resolved.is_alive(VILLAGER)
@@ -123,14 +127,14 @@ def test_the_victim_only_dies_when_the_night_is_resolved() -> None:
 def test_resolving_a_night_clears_what_it_collected() -> None:
     state = shared(night(), WOLF, p5=100)
 
-    resolved, _ = resolve_night(state, policy=DISCREET)
+    resolved, _ = resolve_night(state)
 
     assert resolved.priority_shares == ()
     assert resolved.runoff_targets == ()
 
 
 def test_a_night_nobody_acted_in_takes_nobody() -> None:
-    resolved, victims = resolve_night(night(), policy=DISCREET)
+    resolved, victims = resolve_night(night())
 
     assert victims == ()
     assert len(resolved.living) == len(TABLE)
@@ -142,13 +146,13 @@ def test_a_night_nobody_acted_in_takes_nobody() -> None:
 def test_the_pack_takes_the_prey_its_points_agree_on() -> None:
     state = shared(shared(night(), WOLF, p5=70, p2=30), OTHER_WOLF, p5=50, p2=10)
 
-    assert designated_prey(state, policy=DISCREET) == VILLAGER
+    assert designated_prey(state) == VILLAGER
 
 
 def test_one_wolf_can_pull_the_pack_away_from_a_prey() -> None:
     state = shared(shared(night(), WOLF, p5=50), OTHER_WOLF, p5=-60, p2=20)
 
-    assert designated_prey(state, policy=DISCREET) == SEER
+    assert designated_prey(state) == SEER
 
 
 # --- A tie, then a runoff, then nobody (J4.3.5) ------------------------------
@@ -177,7 +181,7 @@ def test_a_tie_that_survives_the_runoff_takes_nobody() -> None:
     """Second tie, no victim — the same rule as the day vote (D-050)."""
     state = shared(night(), WOLF, p5=50, p2=50)
 
-    _, victims = resolve_night(state, policy=DISCREET)
+    _, victims = resolve_night(state)
 
     assert victims == ()
 
@@ -198,28 +202,28 @@ def test_a_reopened_night_settles_on_the_second_answer() -> None:
 
     settled = shared(reopened, WOLF, p5=10)
 
-    assert designated_prey(settled, policy=DISCREET) == VILLAGER
+    assert designated_prey(settled) == VILLAGER
 
 
 # --- The pack may be made to designate someone (J4.3.6, D-078) ---------------
 
 
 def test_by_default_the_pack_may_leave_the_night_empty() -> None:
-    assert InformationPolicy().require_werewolf_target is False
+    assert NightOptions().require_werewolf_target is False
 
 
 def test_forcing_the_pack_changes_nothing_when_it_had_already_settled() -> None:
-    state = shared(night(), WOLF, p5=70, p2=30)
+    state = shared(forced_night(), WOLF, p5=70, p2=30)
 
-    assert designated_prey(state, policy=FORCED) == VILLAGER
+    assert designated_prey(state) == VILLAGER
 
 
-@pytest.mark.parametrize("policy", [DISCREET, FORCED])
-def test_the_pack_never_takes_one_of_its_own(policy: InformationPolicy) -> None:
+@pytest.mark.parametrize("rules", [GameRules(), FORCED])
+def test_the_pack_never_takes_one_of_its_own(rules: GameRules) -> None:
     """Its own are not prey, so the points spent on them buy nothing."""
-    state = shared(night(), WOLF, p0=90, p1=90)
+    state = shared(night(rules=rules), WOLF, p0=90, p1=90)
 
-    assert designated_prey(state, policy=policy) is None
+    assert designated_prey(state) is None
 
 
 # --- What the lot does for a pack that must designate someone (D-081) --------
@@ -227,51 +231,52 @@ def test_the_pack_never_takes_one_of_its_own(policy: InformationPolicy) -> None:
 
 def test_a_pack_that_settled_is_never_sent_to_the_lot() -> None:
     """The lot answers a pack that did not choose, never one that did."""
-    state = shared(night(), WOLF, p5=70, p2=30)
+    state = shared(forced_night(), WOLF, p5=70, p2=30)
 
-    assert prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(1)) is None
+    assert prey_drawn_by_lot(state, rng=create_rng(1)) is None
 
 
 def test_a_pack_free_to_take_nobody_is_never_sent_to_the_lot() -> None:
+    """An ordinary night: the pack tied, and a tie simply spares everyone."""
     state = shared(night(), WOLF, p5=50, p2=50)
 
-    assert prey_drawn_by_lot(state, policy=DISCREET, rng=create_rng(1)) is None
+    assert prey_drawn_by_lot(state, rng=create_rng(1)) is None
 
 
 def test_the_lot_takes_one_of_the_prey_the_pack_was_torn_between() -> None:
-    state = shared(night(), WOLF, p5=50, p2=50)
+    state = shared(forced_night(), WOLF, p5=50, p2=50)
 
-    assert prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(1)) in {VILLAGER, SEER}
+    assert prey_drawn_by_lot(state, rng=create_rng(1)) in {VILLAGER, SEER}
 
 
 def test_the_lot_falls_on_any_prey_when_the_pack_named_nobody() -> None:
     """Nothing to break a tie between, so every living prey is in the draw."""
-    drawn = prey_drawn_by_lot(night(), policy=FORCED, rng=create_rng(1))
+    drawn = prey_drawn_by_lot(forced_night(), rng=create_rng(1))
 
     assert drawn is not None
     assert drawn not in {WOLF, OTHER_WOLF}, "never one of its own"
 
 
 def test_the_lot_never_takes_a_dead_player() -> None:
-    state = night().with_players_killed([SEER, VILLAGER])
+    state = forced_night().with_players_killed([SEER, VILLAGER])
 
-    assert prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(1)) in {WITCH, HUNTER}
+    assert prey_drawn_by_lot(state, rng=create_rng(1)) in {WITCH, HUNTER}
 
 
 def test_the_lot_does_not_always_fall_on_the_same_prey() -> None:
     """The point of D-081: the seat no longer decides, so nobody is safe by rank."""
-    state = shared(night(), WOLF, p5=50, p2=50)
+    state = shared(forced_night(), WOLF, p5=50, p2=50)
 
-    drawn = {prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(seed)) for seed in range(20)}
+    drawn = {prey_drawn_by_lot(state, rng=create_rng(seed)) for seed in range(20)}
 
     assert drawn == {VILLAGER, SEER}
 
 
 def test_the_same_seed_draws_the_same_prey() -> None:
     """Reproducible, so a surprising game can be replayed exactly (D-040)."""
-    state = shared(night(), WOLF, p5=50, p2=50)
+    state = shared(forced_night(), WOLF, p5=50, p2=50)
 
-    assert len({prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(7)) for _ in range(5)}) == 1
+    assert len({prey_drawn_by_lot(state, rng=create_rng(7)) for _ in range(5)}) == 1
 
 
 def test_a_pack_with_no_prey_left_draws_nobody() -> None:
@@ -281,15 +286,15 @@ def test_a_pack_with_no_prey_left_draws_nobody() -> None:
     opens with the village wiped out. The guard is here because the alternative
     to returning nothing is raising out of a pure resolution.
     """
-    state = night().with_players_killed([SEER, WITCH, HUNTER, VILLAGER])
+    state = forced_night().with_players_killed([SEER, WITCH, HUNTER, VILLAGER])
 
-    assert prey_drawn_by_lot(state, policy=FORCED, rng=create_rng(1)) is None
+    assert prey_drawn_by_lot(state, rng=create_rng(1)) is None
 
 
 def test_the_prey_drawn_is_the_one_the_night_takes() -> None:
-    state = shared(night(), WOLF, p5=50, p2=50).with_prey_drawn(SEER)
+    state = shared(forced_night(), WOLF, p5=50, p2=50).with_prey_drawn(SEER)
 
-    assert designated_prey(state, policy=FORCED) == SEER
+    assert designated_prey(state) == SEER
 
 
 def test_a_drawn_prey_is_wiped_with_the_rest_of_the_round() -> None:
@@ -305,7 +310,7 @@ def test_a_night_designates_the_same_prey_however_often_it_is_asked() -> None:
     readings of one night that disagreed would have her heal someone other than
     the player who dies.
     """
-    state = shared(night(), WOLF, p5=50, p2=50).with_prey_drawn(SEER)
+    state = shared(forced_night(), WOLF, p5=50, p2=50).with_prey_drawn(SEER)
 
-    assert len({designated_prey(state, policy=FORCED) for _ in range(5)}) == 1
-    assert victim_seen_by_the_witch(state, policy=FORCED) == designated_prey(state, policy=FORCED)
+    assert len({designated_prey(state) for _ in range(5)}) == 1
+    assert victim_seen_by_the_witch(state) == designated_prey(state)

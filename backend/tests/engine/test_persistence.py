@@ -92,7 +92,7 @@ def test_writing_a_journal_creates_the_directory_it_belongs_in(tmp_path: Path) -
 def test_a_whole_game_survives_a_trip_through_a_file(tmp_path: Path) -> None:
     """The point of the exercise: a game replayed from disk is the same game."""
     rng = create_rng(3)
-    state = create_game(8, rng=rng)
+    state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
     result = play_game(state, agents, journal=Journal())
 

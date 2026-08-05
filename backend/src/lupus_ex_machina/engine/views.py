@@ -30,7 +30,6 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.night import victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import (
@@ -148,7 +147,7 @@ def _victim_shown_to(
     """
     if RoleActionName.HEAL not in actions:
         return None
-    return victim_seen_by_the_witch(state, policy=InformationPolicy())
+    return victim_seen_by_the_witch(state)
 
 
 def _allies_of(state: GameState, viewer: PlayerId) -> tuple[PlayerId, ...]:

@@ -26,7 +26,6 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.night import prey_of, victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState
 
@@ -212,7 +211,7 @@ def _validate_healing(state: GameState, actor: PlayerId, target: PlayerId) -> No
     """
     _ensure_the_potion_is_still_full(state, actor, RoleActionName.HEAL)
 
-    taken = victim_seen_by_the_witch(state, policy=InformationPolicy())
+    taken = victim_seen_by_the_witch(state)
     if taken is None or target != taken:
         raise IllegalIntentError("The potion of life only saves the victim of the night")
 

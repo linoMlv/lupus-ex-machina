@@ -11,9 +11,18 @@ evaluated once per round, after the resolution is complete.
 """
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from lupus_ex_machina.engine.roles import Team
-from lupus_ex_machina.engine.state import GameState
+
+if TYPE_CHECKING:  # pragma: no cover - imported for typing only, see below
+    from lupus_ex_machina.engine.state import GameState
+
+# The import above is deferred to break a cycle, and the cycle says something
+# true about the design: `decide` is a rule about head counts, which a
+# composition checks itself against (D-061) long before any state exists, while
+# `evaluate_victory` is that same rule applied to a running game. The state
+# reaches this module for typing alone, so it is asked for at typing time alone.
 
 PARITY_ENDGAME_SIZE = 2
 
@@ -44,7 +53,7 @@ def decide(*, werewolves: int, villagers: int) -> Outcome | None:
     return None
 
 
-def evaluate_victory(state: GameState) -> Outcome | None:
+def evaluate_victory(state: "GameState") -> Outcome | None:
     """Return the winning side, or ``None`` while the game is still running."""
     return decide(
         werewolves=len(state.living_of_team(Team.WEREWOLVES)),

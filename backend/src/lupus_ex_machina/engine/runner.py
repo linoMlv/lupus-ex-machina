@@ -25,7 +25,7 @@ from typing import assert_never
 from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.bidding import Bid, DebateRules, elect
+from lupus_ex_machina.engine.bidding import Bid, elect
 from lupus_ex_machina.engine.errors import EngineError, IllegalIntentError
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
@@ -76,7 +76,6 @@ from lupus_ex_machina.engine.night import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, Team
@@ -87,16 +86,6 @@ from lupus_ex_machina.engine.views import project
 
 # Generous on purpose: with eight players, a real game lasts a handful of rounds.
 DEFAULT_MAX_ROUNDS = 100
-
-# The generator a game falls back on when the caller keeps none of its own. Any
-# fixed seed does: what matters is that a game without an explicit generator is
-# still reproducible.
-FALLBACK_SEED = 0
-
-# How many turns at the floor a day may hold, per living player. A ceiling on
-# model calls (GL-7), not a rule: a debate is meant to end when the last player
-# votes (D-013), or when nobody has anything left to say (D-060).
-TURNS_PER_PLAYER_PER_DAY = 5
 
 Agents = Mapping[PlayerId, Agent]
 
@@ -217,8 +206,6 @@ def play_game(
     *,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     journal: Journal | None = None,
-    policy: InformationPolicy | None = None,
-    debate: DebateRules | None = None,
     control: DebateControl | None = None,
     claim: FloorClaim | None = None,
     rng: Rng | None = None,
@@ -229,17 +216,19 @@ def play_game(
     playing never comes without a record of what happened.
 
     Pass the generator the game was dealt from to keep one seed behind
-    everything it does (D-040). A game that does not supply one still gets a
-    deterministic generator: the only draw a running game makes is the lot that
+    everything it does (D-040). A game that does not supply one is dealt a fresh
+    one from its own seed: the only draw a running game makes is the lot that
     settles a pack made to designate someone (D-081), and it has to be
     reproducible either way.
+
+    How the game is played is not an argument: the rules travel in the state
+    (D-068), so nothing here can be run under rules the view and the validator
+    have not seen.
     """
     run = _Run(
         agents,
         journal if journal is not None else Journal(),
-        policy if policy is not None else InformationPolicy(),
-        debate if debate is not None else DebateRules(),
-        rng if rng is not None else create_rng(FALLBACK_SEED),
+        rng if rng is not None else create_rng(state.rules.table.seed),
         control=control if control is not None else DebateControl(),
         claim=claim if claim is not None else FloorClaim(),
     )
@@ -267,8 +256,6 @@ class _Run:
         self,
         agents: Agents,
         journal: Journal,
-        policy: InformationPolicy,
-        debate: DebateRules,
         rng: Rng,
         *,
         control: DebateControl | None = None,
@@ -276,8 +263,6 @@ class _Run:
     ) -> None:
         self._agents = agents
         self._journal = journal
-        self._policy = policy
-        self._debate_rules = debate
         self._rng = rng
         self._control = control if control is not None else DebateControl()
         self._claim = claim if claim is not None else FloorClaim()
@@ -331,7 +316,7 @@ class _Run:
         Before the resolution rather than with it: the count is what the table
         reacts to, and what it leads to is the next fact along.
         """
-        if not self._policy.reveal_ballots_at_the_count:
+        if not state.rules.information.reveal_ballots_at_the_count:
             return
 
         self._journal.record(
@@ -395,7 +380,7 @@ class _Run:
     @staticmethod
     def _turn_budget(state: GameState) -> int:
         """How many turns at the floor a single day may hold at the very most."""
-        return TURNS_PER_PLAYER_PER_DAY * len(state.living)
+        return state.rules.debate.turns_per_player_per_day * len(state.living)
 
     def _auction_the_floor(self, state: GameState) -> tuple[GameState, bool]:
         """Ask who wants to speak, and let the winner take their turn (D-002).
@@ -431,7 +416,7 @@ class _Run:
     def _won_floor(self, state: GameState) -> PlayerId | None:
         """Hold an auction and hand back whoever won it, if anyone did."""
         auction = elect(
-            self._bids_of(state), floor=state.floor, rules=self._debate_rules, rng=self._rng
+            self._bids_of(state), floor=state.floor, rules=state.rules.debate, rng=self._rng
         )
         self._journal.record(FloorAuctioned(scores=auction.scores, winner=auction.winner), at=state)
         return auction.winner
@@ -457,7 +442,7 @@ class _Run:
 
         self._hand_out_what_the_seers_read(state)
         self._write_down_what_was_used_up(state)
-        return self._resolve(state, self._resolve_the_night, _night_outcome)
+        return self._resolve(state, resolve_night, _night_outcome)
 
     def _write_down_what_was_used_up(self, state: GameState) -> None:
         """Record the potions this night emptied, before the round is wiped."""
@@ -466,14 +451,14 @@ class _Run:
 
     def _hand_out_what_the_seers_read(self, state: GameState) -> None:
         """Tell each seer what she read, and the table if she speaks (D-031)."""
-        for finding in findings_of(state, policy=self._policy):
+        for finding in findings_of(state):
             self._journal.record(
                 SeerInspected(
                     seer=finding.seer, target=finding.target, revelation=finding.revelation
                 ),
                 at=state,
             )
-            if self._policy.speaking_seer:
+            if state.rules.roles.speaking_seer:
                 self._journal.record(SeerFindingAnnounced(revelation=finding.revelation), at=state)
 
     def _collect_night_intents(self, state: GameState) -> GameState:
@@ -484,7 +469,7 @@ class _Run:
         at the end (D-006). The day has no such guarantee — the hunter fires as
         they die — which is why its own loop cannot take the same shortcut.
         """
-        callers = night_callers(state, policy=self._policy)
+        callers = night_callers(state)
         last_wolf = _last_of_the_pack(callers)
 
         for caller in callers:
@@ -513,7 +498,7 @@ class _Run:
         state = state.reopened_for_runoff(tied)
         self._journal.record(RunoffOpened(targets=tied), at=state)
 
-        for wolf in night_callers(state, policy=self._policy):
+        for wolf in night_callers(state):
             if wolf.team is Team.WEREWOLVES:
                 state = self._apply(state, wolf.id, self._ask(state, wolf.id))
         return state
@@ -526,12 +511,8 @@ class _Run:
         goes into the state so that the resolution *reads* it: a night asked
         twice cannot come back with two different victims.
         """
-        drawn = prey_drawn_by_lot(state, policy=self._policy, rng=self._rng)
+        drawn = prey_drawn_by_lot(state, rng=self._rng)
         return state if drawn is None else state.with_prey_drawn(drawn)
-
-    def _resolve_the_night(self, state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
-        """Close the night with the options the game was configured with."""
-        return resolve_night(state, policy=self._policy)
 
     def enter(self, state: GameState, phase: Phase, *, day: int | None = None) -> GameState:
         """Move to another phase and record it. The only way a phase is entered."""
@@ -604,7 +585,7 @@ class _Run:
             return intent.target, True
 
         self._refuse(state, hunter, intent)
-        if not self._policy.hunter_must_shoot:
+        if not state.rules.roles.hunter_must_shoot:
             return None
 
         forced = someone_to_take_along(state, hunter)
@@ -633,7 +614,7 @@ class _Run:
 
         Death itself was already recorded, and is never configurable.
         """
-        if not self._policy.reveal_role_on_death:
+        if not state.rules.information.reveal_role_on_death:
             return
         for victim in victims:
             self._journal.record(

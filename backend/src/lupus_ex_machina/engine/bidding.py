@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import Rng
+from lupus_ex_machina.engine.rules import DebateOptions
 from lupus_ex_machina.engine.state import Speech
 
 
@@ -37,50 +38,6 @@ class Bid(BaseModel):
         min_length=1,
         description="En quelques mots, ce que tu dirais si on te donnait la parole.",
     )
-
-
-class DebateRules(BaseModel):
-    """The coefficients the arbitration is made of (D-002).
-
-    Held in one record rather than in the code: D-002 is explicit that these
-    values are indicative and will have to be calibrated by playing. Hard-coded,
-    every adjustment would be a code change. J6 folds this into the single
-    configuration schema of the project (D-068), the way it will fold
-    :class:`InformationPolicy`.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    addressed_bonus: int = 25
-    """Added when the last speaker was talking *to* this player."""
-
-    accused_bonus: int = 40
-    """Added when the last speaker accused this player.
-
-    Worth more than merely being talked to, and D-002 already said so: an answer
-    owed to the whole table is more pressing than one owed to a person.
-    """
-
-    recency_penalty: int = 30
-    """Charged to whoever just spoke, fading over the following turns.
-
-    This is the anti-monopoly of D-002, and it is what makes a debate move: the
-    surest way to lose the next auction is to have won the last one.
-    """
-
-    recency_window: int = 3
-    """How many turns it takes for the recency penalty to fade to nothing."""
-
-    word_quota: int = 300
-    """How many words a player may spend in a day before it costs them."""
-
-    quota_penalty: int = 50
-    """Charged once a player has talked past their quota for the day.
-
-    Answers the verbosity of language models with something other than a
-    truncation: a player who has said a great deal has to want the floor
-    markedly more than one who has been listening.
-    """
 
 
 class BidScore(BaseModel):
@@ -126,7 +83,7 @@ def elect(
     bids: Mapping[PlayerId, Bid],
     *,
     floor: tuple[Speech, ...],
-    rules: DebateRules,
+    rules: DebateOptions,
     rng: Rng,
 ) -> Auction:
     """Weigh every bid and hand the floor to the most pressing one.
@@ -148,7 +105,7 @@ def elect(
 
 
 def score_of(
-    bid: Bid, *, bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateRules
+    bid: Bid, *, bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateOptions
 ) -> BidScore:
     """Weigh one bid against the turns the day has already had."""
     return BidScore(
@@ -159,7 +116,7 @@ def score_of(
     )
 
 
-def _owed_an_answer(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateRules) -> int:
+def _owed_an_answer(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateOptions) -> int:
     """What the last turn at the floor left this player owing the table.
 
     Only the last one counts. A bonus that outlived the exchange that earned it
@@ -175,7 +132,7 @@ def _owed_an_answer(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateRu
     return addressed + accused
 
 
-def _just_spoke(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateRules) -> int:
+def _just_spoke(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateOptions) -> int:
     """What this player still owes for having held the floor recently.
 
     Full price for the turn just taken, then fading with every turn somebody
@@ -200,7 +157,7 @@ def _turns_since_speaking(bidder: PlayerId, floor: tuple[Speech, ...]) -> int | 
     return None
 
 
-def _spoke_too_much(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateRules) -> int:
+def _spoke_too_much(bidder: PlayerId, floor: tuple[Speech, ...], rules: DebateOptions) -> int:
     """What this player owes for the room they have already taken up today."""
     spent = sum(speech.words for speech in floor if speech.speaker == bidder)
     return rules.quota_penalty if spent > rules.word_quota else 0

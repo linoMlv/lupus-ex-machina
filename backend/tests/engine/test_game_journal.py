@@ -30,10 +30,10 @@ from lupus_ex_machina.engine.events import (
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import Team, team_of
+from lupus_ex_machina.engine.rules import GameRules, InformationOptions, TableOptions
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 
@@ -44,13 +44,19 @@ def play(
     seed: int,
     *,
     player_count: int = 8,
-    policy: InformationPolicy | None = None,
+    rules: GameRules | None = None,
 ) -> GameResult:
     """Play one full game of random agents, journalling everything."""
     rng = create_rng(seed)
-    state = create_game(player_count, rng=rng)
+    settled = rules if rules is not None else GameRules()
+    state = create_game(
+        settled.model_copy(
+            update={"table": settled.table.model_copy(update={"player_count": player_count})}
+        ),
+        rng=rng,
+    )
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal(), policy=policy)
+    return play_game(state, agents, journal=Journal())
 
 
 def facts_of[FactT: Fact](result: GameResult, kind: type[FactT]) -> list[FactT]:
@@ -141,7 +147,7 @@ def test_every_death_is_written_down() -> None:
 def test_a_refused_intent_is_written_down_for_the_audience_alone() -> None:
     """The raw material for judging how models behave in J7."""
     rng = create_rng(9)
-    state = create_game(8, rng=rng)
+    state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {
         player.id: RogueAgent() if player.seat == 0 else RandomAgent(rng=rng)
         for player in state.players
@@ -156,7 +162,7 @@ def test_a_refused_intent_is_written_down_for_the_audience_alone() -> None:
 def test_a_game_played_without_a_journal_still_runs() -> None:
     """Journalling is not a burden the caller must carry to play a game."""
     rng = create_rng(5)
-    state = create_game(6, rng=rng)
+    state = create_game(GameRules(table=TableOptions(player_count=6)), rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: AlwaysAccuseAgent() for player in state.players}
 
     result = play_game(state, agents)
@@ -168,7 +174,9 @@ def test_a_game_played_without_a_journal_still_runs() -> None:
 
 
 def test_the_role_of_the_dead_is_revealed_when_the_configuration_says_so() -> None:
-    result = play(seed=1, policy=InformationPolicy(reveal_role_on_death=True))
+    result = play(
+        seed=1, rules=GameRules(information=InformationOptions(reveal_role_on_death=True))
+    )
     revealed = {revelation.player: revelation.role for revelation in facts_of(result, RoleRevealed)}
     dead = {player.id: player.role for player in result.state.players if not player.alive}
 
@@ -177,14 +185,18 @@ def test_the_role_of_the_dead_is_revealed_when_the_configuration_says_so() -> No
 
 def test_the_role_of_the_dead_stays_hidden_when_the_configuration_says_so() -> None:
     """Death itself is never hidden — only what the deceased was (D-072)."""
-    result = play(seed=1, policy=InformationPolicy(reveal_role_on_death=False))
+    result = play(
+        seed=1, rules=GameRules(information=InformationOptions(reveal_role_on_death=False))
+    )
 
     assert facts_of(result, RoleRevealed) == []
     assert facts_of(result, VoteResolved), "deaths are recorded all the same"
 
 
 def test_a_revelation_names_the_role_the_player_actually_held() -> None:
-    result = play(seed=2, policy=InformationPolicy(reveal_role_on_death=True))
+    result = play(
+        seed=2, rules=GameRules(information=InformationOptions(reveal_role_on_death=True))
+    )
 
     for revelation in facts_of(result, RoleRevealed):
         assert result.state.player(revelation.player).role is revelation.role
@@ -192,7 +204,7 @@ def test_a_revelation_names_the_role_the_player_actually_held() -> None:
 
 def test_by_default_a_death_reveals_nothing() -> None:
     """The engine picks the discreet default; J6 makes it a knob."""
-    assert InformationPolicy().reveal_role_on_death is False
+    assert InformationOptions().reveal_role_on_death is False
 
 
 def test_a_revelation_is_recorded_whichever_side_the_dead_belonged_to() -> None:
@@ -205,7 +217,8 @@ def test_a_revelation_is_recorded_whichever_side_the_dead_belonged_to() -> None:
         team_of(revelation.role)
         for seed in (1, 2, 3, 4)
         for revelation in facts_of(
-            play(seed, policy=InformationPolicy(reveal_role_on_death=True)), RoleRevealed
+            play(seed, rules=GameRules(information=InformationOptions(reveal_role_on_death=True))),
+            RoleRevealed,
         )
     }
 

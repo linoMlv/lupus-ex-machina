@@ -32,10 +32,10 @@ from lupus_ex_machina.engine.events import (
 from lupus_ex_machina.engine.journal import Journal, project_journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleName, Team
+from lupus_ex_machina.engine.rules import GameRules, InformationOptions, RoleOptions
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
@@ -51,12 +51,12 @@ CORPUS = range(100)
 SAMPLE = range(12)
 
 
-def played(seed: int, *, policy: InformationPolicy | None = None) -> GameResult:
+def played(seed: int, *, rules: GameRules | None = None) -> GameResult:
     """Play one full game of random agents, journalling everything."""
     rng = create_rng(seed)
-    state = create_game(8, rng=rng)
+    state = create_game(rules, rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal(), policy=policy)
+    return play_game(state, agents, journal=Journal())
 
 
 def played_with_a_rogue(seed: int) -> GameResult:
@@ -66,7 +66,7 @@ def played_with_a_rogue(seed: int) -> GameResult:
     below would hold over an empty set and prove nothing.
     """
     rng = create_rng(seed)
-    state = create_game(8, rng=rng)
+    state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {
         player.id: RogueAgent() if player.seat == 0 else RandomAgent(rng=rng)
         for player in state.players
@@ -140,7 +140,10 @@ def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
     """
     result = played(
         seed,
-        policy=InformationPolicy(reveal_role_on_death=False, seer_learns_exact_role=False),
+        rules=GameRules(
+            information=InformationOptions(reveal_role_on_death=False),
+            roles=RoleOptions(seer_learns_exact_role=False),
+        ),
     )
 
     for player in result.state.players:
@@ -242,7 +245,9 @@ def test_every_death_reaches_every_single_recipient(seed: int) -> None:
 
 @pytest.mark.parametrize("seed", SAMPLE)
 def test_the_role_of_the_dead_reaches_everyone_when_it_is_revealed(seed: int) -> None:
-    result = played(seed, policy=InformationPolicy(reveal_role_on_death=True))
+    result = played(
+        seed, rules=GameRules(information=InformationOptions(reveal_role_on_death=True))
+    )
     revelations = {event.sequence for event in payloads_of(result.journal, RoleRevealed)}
     assert revelations, "nothing was revealed, so nothing is proven"
 
@@ -255,7 +260,9 @@ def test_the_role_of_the_dead_reaches_everyone_when_it_is_revealed(seed: int) ->
 @pytest.mark.parametrize("seed", SAMPLE)
 def test_a_hidden_role_stays_hidden_even_once_its_holder_is_dead(seed: int) -> None:
     """The option decides whether the fact happens, never who may read it."""
-    result = played(seed, policy=InformationPolicy(reveal_role_on_death=False))
+    result = played(
+        seed, rules=GameRules(information=InformationOptions(reveal_role_on_death=False))
+    )
 
     assert not payloads_of(result.journal, RoleRevealed)
     assert any(not player.alive for player in result.state.players), "somebody did die"

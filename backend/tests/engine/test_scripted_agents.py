@@ -13,15 +13,18 @@ from lupus_ex_machina.engine.intents import IntentKind, TakeTurn, Wait
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.rules import GameRules, TableOptions
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project
 
+SIX_SEATS = GameRules(table=TableOptions(player_count=6))
+
 
 def every_phase_of_a_game() -> list[GameState]:
     """A game state in each phase where agents are asked to act."""
-    night_zero = create_game(6, rng=create_rng(3))
+    night_zero = create_game(SIX_SEATS, rng=create_rng(3))
     first_day = night_zero.entering(Phase.DAY, day=1)
     debate_day = first_day.entering(Phase.RESOLUTION).entering(Phase.DAY, day=2)
     night = debate_day.entering(Phase.RESOLUTION).entering(Phase.NIGHT)
@@ -47,7 +50,7 @@ def test_agents_only_ever_produce_legal_intents(agent: Agent) -> None:
 
 @pytest.mark.parametrize("agent", agents(), ids=lambda agent: type(agent).__name__)
 def test_agents_stay_silent_once_they_have_voted(agent: Agent) -> None:
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     voter = state.living[0].id
     state = state.with_ballot_from(voter, state.living[1].id)
 
@@ -69,7 +72,7 @@ def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
 
 
 def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     accuser = state.living[0].id
 
     intent = AlwaysAccuseAgent().decide(project(state, accuser))
@@ -81,7 +84,7 @@ def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
 
 
 def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() -> None:
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=1)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=1)
     accuser = state.living[0].id
 
     intent = AlwaysAccuseAgent().decide(project(state, accuser))
@@ -104,7 +107,7 @@ def lines_of(state: GameState, speaker: PlayerId, seeds: range = range(30)) -> l
 
 def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
     """Degenerate but reachable: speech must never depend on someone else existing."""
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     lonely = state.living[0].id
     state = state.with_players_killed(player.id for player in state.living[1:])
 
@@ -119,7 +122,7 @@ def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
 
 def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() -> None:
     """A line joins the shared transcript: it is read on screen, and by the models (J7)."""
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     speaker = state.living[0]
     others = [other for other in state.players if other.id != speaker.id]
 
@@ -133,7 +136,7 @@ def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() ->
 
 
 def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     view = project(state, state.living[0].id)
 
     first = [RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
@@ -143,7 +146,7 @@ def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:
 
 
 def test_the_random_agent_does_not_always_answer_the_same_thing() -> None:
-    state = create_game(6, rng=create_rng(3)).entering(Phase.DAY, day=2)
+    state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     view = project(state, state.living[0].id)
     agent = RandomAgent(rng=create_rng(5))
 

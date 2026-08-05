@@ -16,6 +16,7 @@ from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.phases import Phase, ensure_transition_allowed
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import RoleActionName, Team
+from lupus_ex_machina.engine.rules import GameRules
 
 
 class Ballot(BaseModel):
@@ -104,6 +105,15 @@ class GameState(BaseModel):
     players: tuple[Player, ...]
     phase: Phase
     day: int = Field(ge=0)
+    rules: GameRules = Field(default_factory=GameRules)
+    """The rules this game is played by (D-068).
+
+    Carried here rather than passed from call to call, for the reason
+    ``runoff_targets`` is: the view handed to an agent is derived from the state
+    alone, so rules known only to a caller would offer moves the validator
+    refuses — which is exactly what J5 closed with, the witch being offered a
+    potion aimed at a prey the validator could not see.
+    """
     ballots: tuple[Ballot, ...] = ()
     floor: tuple[Speech, ...] = ()
     """The turns at the floor this round has had, in the order they were taken.
@@ -130,9 +140,14 @@ class GameState(BaseModel):
     """
 
     @classmethod
-    def initial(cls, players: Iterable[Player]) -> "GameState":
+    def initial(cls, players: Iterable[Player], *, rules: GameRules | None = None) -> "GameState":
         """Build the state a game starts from: Night 0, before any action."""
-        return cls(players=tuple(players), phase=Phase.NIGHT_ZERO, day=0)
+        return cls(
+            players=tuple(players),
+            phase=Phase.NIGHT_ZERO,
+            day=0,
+            rules=rules if rules is not None else GameRules(),
+        )
 
     # --- Queries ---------------------------------------------------------
 

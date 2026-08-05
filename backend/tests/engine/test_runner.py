@@ -15,7 +15,7 @@ from lupus_ex_machina.agents.scripted import (
     SilentAgent,
 )
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.bidding import Bid, DebateRules
+from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.composition import MAXIMUM_PLAYERS, MINIMUM_PLAYERS
 from lupus_ex_machina.engine.events import (
     BallotAnnounced,
@@ -38,9 +38,9 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.rules import GameRules, InformationOptions, NightOptions
 from lupus_ex_machina.engine.runner import (
     DebateControl,
     FloorClaim,
@@ -57,11 +57,28 @@ from lupus_ex_machina.engine.visibility import VisibilityScope
 
 PLAYER_COUNTS = range(MINIMUM_PLAYERS, MAXIMUM_PLAYERS + 1)
 
+#: A pack made to leave the night with a victim (D-078), which is what sends it
+#: to the lot when it cannot agree (D-081).
+FORCED = GameRules(night=NightOptions(require_werewolf_target=True))
+
+
+def seats(count: int, rules: GameRules | None = None) -> GameRules:
+    """The same rules, dealt to a table of that size."""
+    settled = rules if rules is not None else GameRules()
+    return settled.model_copy(
+        update={"table": settled.table.model_copy(update={"player_count": count})}
+    )
+
+
+def six_seats(rules: GameRules | None = None) -> GameRules:
+    """The smallest table V1 deals (D-056)."""
+    return seats(6, rules)
+
 
 def play(seed: int, *, player_count: int = 8) -> GameResult:
     """Play one full game of random agents, everything derived from one seed."""
     rng = create_rng(seed)
-    state = create_game(player_count, rng=rng)
+    state = create_game(seats(player_count), rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
     return play_game(state, agents)
 
@@ -106,7 +123,7 @@ def test_a_table_that_always_accuses_ends_quickly() -> None:
     The bound is what makes the name true — without it the round budget of 100
     would let a stalling regression through unnoticed.
     """
-    state = create_game(8, rng=create_rng(4))
+    state = create_game(rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: AlwaysAccuseAgent() for player in state.players}
 
     result = play_game(state, agents)
@@ -123,7 +140,7 @@ def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None
     the forced vote only closes the round, it does not eliminate. The round
     budget exists to turn that into a loud failure rather than a hang.
     """
-    state = create_game(8, rng=create_rng(4))
+    state = create_game(rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
     with pytest.raises(GameDidNotEndError):
@@ -137,16 +154,10 @@ def test_the_same_table_ends_when_the_pack_is_made_to_designate_someone() -> Non
     eats the village and wins. Nothing else about the game changed.
     """
     rng = create_rng(4)
-    state = create_game(8, rng=rng)
+    state = create_game(FORCED, rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
-    result = play_game(
-        state,
-        agents,
-        max_rounds=10,
-        policy=InformationPolicy(require_werewolf_target=True),
-        rng=rng,
-    )
+    result = play_game(state, agents, max_rounds=10, rng=rng)
 
     assert_properly_finished(result)
     assert result.outcome is Outcome.WEREWOLVES_WIN
@@ -165,16 +176,10 @@ def test_the_prey_the_lot_takes_depends_on_the_seed() -> None:
 def _who_the_lot_took(seed: int) -> tuple[PlayerId, ...]:
     """Play the deadlocked table with one seed and report who the pack ate."""
     rng = create_rng(seed)
-    state = create_game(8, rng=create_rng(4))
+    state = create_game(FORCED, rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
-    result = play_game(
-        state,
-        agents,
-        max_rounds=10,
-        policy=InformationPolicy(require_werewolf_target=True),
-        rng=rng,
-    )
+    result = play_game(state, agents, max_rounds=10, rng=rng)
     return tuple(player.id for player in result.state.players if not player.alive)
 
 
@@ -258,7 +263,7 @@ def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
     model will look like in J7.
     """
     rng = create_rng(9)
-    state = create_game(8, rng=rng)
+    state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {
         player.id: RogueAgent() if player.seat == 0 else RandomAgent(rng=rng)
         for player in state.players
@@ -296,7 +301,7 @@ def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
     about the one phase where every agent is asked and nothing is allowed.
     """
     rng = create_rng(13)
-    state = create_game(6, rng=rng)
+    state = create_game(six_seats(), rng=rng)
     agents: dict[PlayerId, Agent] = {
         player.id: TooEagerOnNightZeroAgent(rng) for player in state.players
     }
@@ -320,7 +325,7 @@ class NeverVotesAgent:
 
 def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
     """Waiting forever is legal, so the round needs its own way out (D-048, D-060)."""
-    state = create_game(8, rng=create_rng(10))
+    state = create_game(rng=create_rng(10))
     agents: dict[PlayerId, Agent] = {
         player.id: NeverVotesAgent() if player.seat == 0 else AlwaysAccuseAgent()
         for player in state.players
@@ -341,7 +346,7 @@ def test_the_engine_refuses_to_loop_forever() -> None:
         def decide(self, view: PlayerView) -> Intent:
             return TakeTurn(vote=Vote())  # nobody ever dies
 
-    state = create_game(6, rng=create_rng(11))
+    state = create_game(six_seats(), rng=create_rng(11))
     agents: dict[PlayerId, Agent] = {player.id: ImmortalAgent() for player in state.players}
 
     with pytest.raises(RuntimeError, match="did not end"):
@@ -373,12 +378,10 @@ class TakesOneTurn:
 
 def one_turn_of(turn: TakeTurn) -> tuple[GameState, PlayerId, tuple[Event, ...]]:
     """Play a single day up to its resolution, one seat playing that turn."""
-    state = create_game(8, rng=create_rng(11)).entering(Phase.DAY, day=2)
+    state = create_game(rng=create_rng(11)).entering(Phase.DAY, day=2)
     actor = state.living[0].id
     journal = Journal()
-    run = _Run(
-        {actor: TakesOneTurn(turn)}, journal, InformationPolicy(), DebateRules(), create_rng(1)
-    )
+    run = _Run({actor: TakesOneTurn(turn)}, journal, create_rng(1))
 
     return run._apply(state, actor, turn), actor, journal.events
 
@@ -423,7 +426,7 @@ def test_speaking_and_voting_at_once_does_both_in_that_order() -> None:
 
 def test_a_turn_remembers_whom_it_addressed_and_accused() -> None:
     """What the next auction is scored against (D-002)."""
-    state = create_game(8, rng=create_rng(11)).entering(Phase.DAY, day=2)
+    state = create_game(rng=create_rng(11)).entering(Phase.DAY, day=2)
     speaker, target = state.living[0].id, state.living[1].id
 
     after, _, _ = one_turn_of(TakeTurn(speech="Théo, tu mens.", addressed=target, accused=target))
@@ -462,12 +465,12 @@ def a_day_of(
     The day alone rather than a whole game: what the auction does is the thing
     under test, and a game would drown it in nights and resolutions.
     """
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     agents: dict[PlayerId, Agent] = {
         player.id: Insistent(urgencies[player.seat]) for player in state.players
     }
     journal = Journal()
-    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3), claim=claim)
+    run = _Run(agents, journal, create_rng(3), claim=claim)
 
     run.play_day(run.enter(state, Phase.DAY, day=2))
     return state, journal.events
@@ -532,24 +535,16 @@ def a_day_played_by(
     claim: "FloorClaim | None" = None,
 ) -> tuple[Event, ...]:
     """Play one debate day with the given agents, and hand back its journal."""
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     journal = Journal()
-    run = _Run(
-        agents,
-        journal,
-        InformationPolicy(),
-        DebateRules(),
-        create_rng(3),
-        control=control,
-        claim=claim,
-    )
+    run = _Run(agents, journal, create_rng(3), control=control, claim=claim)
 
     run.play_day(run.enter(state, Phase.DAY, day=2))
     return journal.events
 
 
 def a_table_of(agent: type) -> dict[PlayerId, Agent]:
-    return {player.id: agent() for player in create_game(8, rng=create_rng(12)).players}
+    return {player.id: agent() for player in create_game(rng=create_rng(12)).players}
 
 
 def forced_votes_in(events: tuple[Event, ...]) -> list[VoteForced]:
@@ -680,12 +675,12 @@ class VotesFor:
 
 def a_tied_day(targets: dict[int, PlayerId | None]) -> tuple[GameState, tuple[Event, ...]]:
     """Play a day where each seat votes for the player it was given."""
-    state = create_game(6, rng=create_rng(12))
+    state = create_game(six_seats(), rng=create_rng(12))
     agents: dict[PlayerId, Agent] = {
         player.id: VotesFor(targets.get(player.seat)) for player in state.players
     }
     journal = Journal()
-    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3))
+    run = _Run(agents, journal, create_rng(3))
 
     closed, _ = run.play_day(run.enter(state, Phase.DAY, day=2))
     return closed, journal.events
@@ -693,7 +688,7 @@ def a_tied_day(targets: dict[int, PlayerId | None]) -> tuple[GameState, tuple[Ev
 
 def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
     """Three against three: the table is asked again, and only about those two."""
-    state = create_game(6, rng=create_rng(12))
+    state = create_game(six_seats(), rng=create_rng(12))
     first, second = state.players[0].id, state.players[1].id
 
     _, events = a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
@@ -706,7 +701,7 @@ def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
 
 def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
     """Second tie, nobody eliminated — the rule has a floor (D-050)."""
-    state = create_game(6, rng=create_rng(12))
+    state = create_game(six_seats(), rng=create_rng(12))
     first, second = state.players[0].id, state.players[1].id
 
     closed, events = a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
@@ -720,7 +715,7 @@ def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
 
 
 def test_a_vote_that_settles_needs_no_runoff() -> None:
-    state = create_game(6, rng=create_rng(12))
+    state = create_game(six_seats(), rng=create_rng(12))
     hunted = state.players[1].id
 
     closed, events = a_tied_day(dict.fromkeys(range(6), hunted))
@@ -732,13 +727,13 @@ def test_a_vote_that_settles_needs_no_runoff() -> None:
 # --- The count, and what it lets the table see (J5.4.1, D-013, D-051) --------
 
 
-def a_settled_day(*, policy: InformationPolicy) -> tuple[Event, ...]:
-    """Play a day where the table names one player, under the given policy."""
-    state = create_game(6, rng=create_rng(12))
+def a_settled_day(*, rules: GameRules | None = None) -> tuple[Event, ...]:
+    """Play a day where the table names one player, under the given rules."""
+    state = create_game(six_seats(rules), rng=create_rng(12))
     hunted = state.players[1].id
     agents: dict[PlayerId, Agent] = {player.id: VotesFor(hunted) for player in state.players}
     journal = Journal()
-    run = _Run(agents, journal, policy, DebateRules(), create_rng(3))
+    run = _Run(agents, journal, create_rng(3))
 
     run.play_day(run.enter(state, Phase.DAY, day=2))
     return journal.events
@@ -754,10 +749,10 @@ def test_the_count_shows_who_named_whom() -> None:
     It is also the moment the staging is built on (D-075): every head turns to
     its target at the same instant.
     """
-    state = create_game(6, rng=create_rng(12))
+    state = create_game(six_seats(), rng=create_rng(12))
     hunted = state.players[1].id
 
-    counted = counts_in(a_settled_day(policy=InformationPolicy()))
+    counted = counts_in(a_settled_day())
 
     assert counted, "the count is a fact of the game"
     named = {(ballot.voter, ballot.target) for ballot in counted[0].ballots}
@@ -772,13 +767,13 @@ def test_a_game_may_keep_its_ballots_to_themselves() -> None:
     An option that filtered the audience instead would leave the fact in the
     journal for anything that forgot to filter (D-009).
     """
-    quiet = InformationPolicy(reveal_ballots_at_the_count=False)
+    quiet = GameRules(information=InformationOptions(reveal_ballots_at_the_count=False))
 
-    assert counts_in(a_settled_day(policy=quiet)) == []
+    assert counts_in(a_settled_day(rules=quiet)) == []
 
 
 def test_the_count_is_public() -> None:
-    counted = counts_in(a_settled_day(policy=InformationPolicy()))
+    counted = counts_in(a_settled_day())
 
     assert counted[0].audience.scope is VisibilityScope.PUBLIC
 
@@ -793,7 +788,7 @@ def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
     the same faint wish to speak, is passed over by the auction and served at
     once by the priority button. One asks, the other takes.
     """
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     quiet = state.players[5].id
     urgencies = {seat: (0 if seat == 5 else 100) for seat in range(8)}
 
@@ -809,7 +804,7 @@ def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
 
 def test_the_priority_button_takes_the_next_turn_whatever_the_bids() -> None:
     """D-014: absolute priority, and it does not need to win anything."""
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     quiet = state.players[5].id
     claim = FloorClaim()
     claim.claim(quiet)
@@ -821,7 +816,7 @@ def test_the_priority_button_takes_the_next_turn_whatever_the_bids() -> None:
 
 def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
     """It applies at the end of the turn under way, never inside it (D-014)."""
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     quiet = state.players[5].id
     claim = FloorClaim()
 
@@ -867,7 +862,7 @@ def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
     to someone the rules then refuse, and the debate would read that refusal as
     a table with nothing left to say (D-060) and call the vote early.
     """
-    state = create_game(8, rng=create_rng(12))
+    state = create_game(rng=create_rng(12))
     voted = state.players[5].id
     claim = FloorClaim()
 
@@ -875,14 +870,7 @@ def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
         player.id: (VotesFor(None) if player.id == voted else Insistent(50))
         for player in state.players
     }
-    run = _Run(
-        agents,
-        journal := Journal(),
-        InformationPolicy(),
-        DebateRules(),
-        create_rng(3),
-        claim=claim,
-    )
+    run = _Run(agents, journal := Journal(), create_rng(3), claim=claim)
     opened = run.enter(state, Phase.DAY, day=2)
 
     # That seat votes, gives up the floor, and only then presses the button.

@@ -10,7 +10,7 @@ import pytest
 
 from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
-from lupus_ex_machina.engine.bidding import Bid, DebateRules
+from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import NightPowerUsed, PriorityShared, ShotFired
 from lupus_ex_machina.engine.intents import (
     Intent,
@@ -26,7 +26,6 @@ from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.night import resolve_night
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.runner import GameResult, _Run, play_game
@@ -34,9 +33,6 @@ from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.engine.views import PlayerView
-
-DISCREET = InformationPolicy()
-
 
 # --- Agents built for one scenario each --------------------------------------
 
@@ -106,7 +102,7 @@ def test_the_hunter_eaten_at_night_takes_the_last_wolf_with_him() -> None:
         VILLAGER: SilentAgent(),
     }
 
-    result = play_game(GameState.initial(table), agents, journal=Journal(), policy=DISCREET)
+    result = play_game(GameState.initial(table), agents, journal=Journal())
 
     assert result.outcome is Outcome.VILLAGE_WINS
     assert not result.state.player(HUNTER).alive, "the pack did take him"
@@ -133,7 +129,7 @@ def test_a_hunter_who_kills_one_of_two_wolves_leaves_the_game_running() -> None:
         fourth: SilentAgent(),
     }
 
-    result = play_game(GameState.initial(table), agents, journal=Journal(), policy=DISCREET)
+    result = play_game(GameState.initial(table), agents, journal=Journal())
 
     assert result.rounds >= 2, "the game did not stop on the shot"
 
@@ -168,7 +164,7 @@ def test_the_potion_of_life_answers_the_bite() -> None:
         WITCH, RoleActionName.HEAL, PREY
     )
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert victims == ()
     assert len(resolved.living) == len(A_TABLE_WITH_A_WITCH)
@@ -180,7 +176,7 @@ def test_the_witch_taken_by_the_pack_can_save_herself() -> None:
         WITCH, RoleActionName.HEAL, WITCH
     )
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert victims == ()
     assert resolved.is_alive(WITCH)
@@ -192,7 +188,7 @@ def test_poisoning_the_player_the_pack_already_took_kills_them_once() -> None:
         WITCH, RoleActionName.POISON, PREY
     )
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert victims == (PREY,)
     assert len(resolved.living) == len(A_TABLE_WITH_A_WITCH) - 1
@@ -203,7 +199,7 @@ def test_a_night_can_take_the_pack_s_prey_and_the_poisoned_one() -> None:
         WITCH, RoleActionName.POISON, OTHER_PREY
     )
 
-    _, victims = resolve_night(state, policy=DISCREET)
+    _, victims = resolve_night(state)
 
     assert set(victims) == {PREY, OTHER_PREY}
 
@@ -213,7 +209,7 @@ def test_a_night_can_take_the_pack_s_prey_and_the_poisoned_one() -> None:
 
 def played(seed: int) -> GameResult:
     rng = create_rng(seed)
-    state = create_game(8, rng=rng)
+    state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
     return play_game(state, agents, journal=Journal())
 
@@ -344,7 +340,7 @@ def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
         OTHER_PREY: SilentAgent(),
     }
     journal = Journal()
-    run = _Run(agents, journal, DISCREET, DebateRules(), create_rng(5))
+    run = _Run(agents, journal, create_rng(5))
     opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
 
     run.play_night(run.enter(opened, Phase.RESOLUTION))

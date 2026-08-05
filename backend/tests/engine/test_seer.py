@@ -22,9 +22,9 @@ from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.night import Revelation, findings_of
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
+from lupus_ex_machina.engine.rules import GameRules, RoleOptions, TableOptions
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
@@ -42,14 +42,14 @@ TABLE = (
     Player(id=VILLAGER, name="Diane", seat=3, role=RoleName.VILLAGER),
 )
 
-EXACT = InformationPolicy(seer_learns_exact_role=True)
-BINARY = InformationPolicy(seer_learns_exact_role=False)
-SPEAKING = InformationPolicy(seer_learns_exact_role=True, speaking_seer=True)
+EXACT = GameRules(roles=RoleOptions(seer_learns_exact_role=True))
+BINARY = GameRules(roles=RoleOptions(seer_learns_exact_role=False))
+SPEAKING = GameRules(roles=RoleOptions(seer_learns_exact_role=True, speaking_seer=True))
 
 
-def night() -> GameState:
+def night(rules: GameRules = EXACT) -> GameState:
     return (
-        GameState.initial(TABLE)
+        GameState.initial(TABLE, rules=rules)
         .entering(Phase.DAY, day=1)
         .entering(Phase.RESOLUTION)
         .entering(Phase.NIGHT)
@@ -60,8 +60,8 @@ def inspect(target: PlayerId) -> RoleAction:
     return RoleAction(action=RoleActionName.INSPECT, target=target)
 
 
-def looked_at(target: PlayerId) -> GameState:
-    return night().with_night_choice_from(SEER, RoleActionName.INSPECT, target)
+def looked_at(target: PlayerId, rules: GameRules = EXACT) -> GameState:
+    return night(rules).with_night_choice_from(SEER, RoleActionName.INSPECT, target)
 
 
 # --- Whom she may look at (J4.4.1) -------------------------------------------
@@ -105,7 +105,7 @@ def test_the_seer_only_looks_at_night() -> None:
 
 
 def test_she_learns_the_exact_role_when_that_is_the_setting() -> None:
-    (finding,) = findings_of(looked_at(WITCH), policy=EXACT)
+    (finding,) = findings_of(looked_at(WITCH))
 
     assert finding.seer == SEER
     assert finding.target == WITCH
@@ -113,33 +113,33 @@ def test_she_learns_the_exact_role_when_that_is_the_setting() -> None:
 
 
 def test_she_learns_only_wolf_or_not_when_that_is_the_setting() -> None:
-    (finding,) = findings_of(looked_at(WITCH), policy=BINARY)
+    (finding,) = findings_of(looked_at(WITCH, BINARY))
 
     assert finding.revelation.role is None
     assert finding.revelation.is_werewolf is False
 
 
 def test_the_binary_setting_still_names_a_wolf_as_one() -> None:
-    (finding,) = findings_of(looked_at(WOLF), policy=BINARY)
+    (finding,) = findings_of(looked_at(WOLF, BINARY))
 
     assert finding.revelation.is_werewolf is True
 
 
 def test_the_exact_setting_tells_a_wolf_apart_too() -> None:
-    (finding,) = findings_of(looked_at(WOLF), policy=EXACT)
+    (finding,) = findings_of(looked_at(WOLF))
 
     assert finding.revelation.role is RoleName.WEREWOLF
 
 
 def test_a_night_she_sat_out_reveals_nothing() -> None:
-    assert findings_of(night(), policy=EXACT) == ()
+    assert findings_of(night()) == ()
 
 
 def test_only_what_the_seer_did_becomes_a_finding() -> None:
     """Other powers land in the same collection and must not be mistaken for hers."""
     state = looked_at(WOLF).with_night_choice_from(WITCH, RoleActionName.POISON, VILLAGER)
 
-    findings = findings_of(state, policy=EXACT)
+    findings = findings_of(state)
 
     assert [finding.target for finding in findings] == [WOLF]
 
@@ -147,12 +147,12 @@ def test_only_what_the_seer_did_becomes_a_finding() -> None:
 # --- What the table hears (J4.4.3) -------------------------------------------
 
 
-def played(policy: InformationPolicy) -> GameResult:
+def played(rules: GameRules) -> GameResult:
     """A game where the seat holding the seer always looks at someone."""
     rng = create_rng(4)
-    state = create_game(8, rng=rng)
+    state = create_game(rules.model_copy(update={"table": TableOptions(seed=4)}), rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal(), policy=policy)
+    return play_game(state, agents, journal=Journal())
 
 
 def facts_of[FactT: Fact](result: GameResult, kind: type[FactT]) -> list[FactT]:

@@ -16,38 +16,34 @@ handle (D-078).
 from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.priority import tally
 from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.roles import ONE_SHOT_ACTIONS, ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.state import GameState
 
 
-def night_callers(
-    state: GameState, *, policy: InformationPolicy | None = None
-) -> tuple[Player, ...]:
+def night_callers(state: GameState) -> tuple[Player, ...]:
     """The living players the night wakes, in the order it wakes them.
 
-    Ordered by the rank their role declares, then by seat, so two runs of the
-    same game call the same people in the same order.
+    Ordered by the rank the configured wake order gives their role, then by
+    seat, so two runs of the same game call the same people in the same order.
     """
-    settings = policy or InformationPolicy()
+    order = state.rules.night.wake_order
     return tuple(
         sorted(
             (
                 player
                 for player in state.living
-                if ROLES[player.role].wakes_at_night
-                and _has_something_to_do(state, player, settings)
+                if player.role in order and _has_something_to_do(state, player)
             ),
-            key=lambda player: (ROLES[player.role].wake_order or 0, player.seat),
+            key=lambda player: (order.index(player.role), player.seat),
         )
     )
 
 
-def _has_something_to_do(state: GameState, player: Player, policy: InformationPolicy) -> bool:
+def _has_something_to_do(state: GameState, player: Player) -> bool:
     """Whether waking this player is worth it, which only the witch can fail (D-054)."""
-    if player.role is not RoleName.WITCH or policy.wake_witch_without_potions:
+    if player.role is not RoleName.WITCH or state.rules.roles.wake_witch_without_potions:
         return True
     return bool(potions_left_to(state, player.id))
 
@@ -59,14 +55,14 @@ def potions_left_to(state: GameState, witch: PlayerId) -> frozenset[RoleActionNa
     )
 
 
-def victim_seen_by_the_witch(state: GameState, *, policy: InformationPolicy) -> PlayerId | None:
+def victim_seen_by_the_witch(state: GameState) -> PlayerId | None:
     """Whom the pack has settled on, which is what the witch is shown (D-029).
 
     She is woken after it precisely so this has an answer, and she sees a prey
     that has been *designated* rather than one already dead — the whole reason
     the night resolves in one go (D-006).
     """
-    return designated_prey(state, policy=policy)
+    return designated_prey(state)
 
 
 def prey_of(state: GameState) -> tuple[Player, ...]:
@@ -90,7 +86,7 @@ def tied_prey(state: GameState) -> tuple[PlayerId, ...]:
     return () if counted.designated is not None else counted.leaders
 
 
-def designated_prey(state: GameState, *, policy: InformationPolicy) -> PlayerId | None:
+def designated_prey(state: GameState) -> PlayerId | None:
     """The prey the pack ends up taking, or ``None`` when it takes nobody.
 
     Stays a pure reading of the state. A pack made to designate someone (D-078)
@@ -100,13 +96,13 @@ def designated_prey(state: GameState, *, policy: InformationPolicy) -> PlayerId 
     settled = tally(state.priority_shares).designated
     if settled is not None:
         return settled
-    if not policy.require_werewolf_target:
+    if not state.rules.night.require_werewolf_target:
         return None
 
     return state.drawn_prey
 
 
-def prey_drawn_by_lot(state: GameState, *, policy: InformationPolicy, rng: Rng) -> PlayerId | None:
+def prey_drawn_by_lot(state: GameState, *, rng: Rng) -> PlayerId | None:
     """Draw a prey for a pack that must designate one but did not (D-081).
 
     Drawn from the prey it was torn between, or from every prey when it named
@@ -117,7 +113,7 @@ def prey_drawn_by_lot(state: GameState, *, policy: InformationPolicy, rng: Rng) 
     reproducible but always spared the same players. Reproducibility is kept by
     the generator being the game's own, seeded once (D-040).
     """
-    if not policy.require_werewolf_target:
+    if not state.rules.night.require_werewolf_target:
         return None
     if tally(state.priority_shares).designated is not None:
         return None
@@ -149,16 +145,14 @@ def _potion_targets(state: GameState, action: RoleActionName) -> tuple[PlayerId,
     return tuple(choice.target for choice in state.night_choices if choice.action is action)
 
 
-def resolve_night(
-    state: GameState, *, policy: InformationPolicy
-) -> tuple[GameState, tuple[PlayerId, ...]]:
+def resolve_night(state: GameState) -> tuple[GameState, tuple[PlayerId, ...]]:
     """Close the night, in the order the rules are written.
 
     Attack, then the potion that answers it, then the one that adds to it. The
     order is the specification: it reads aloud the way the rules do, and moving
     a line moves a rule.
     """
-    taken = designated_prey(state, policy=policy)
+    taken = designated_prey(state)
     saved = _potion_targets(state, RoleActionName.HEAL)
     poisoned = _potion_targets(state, RoleActionName.POISON)
 
@@ -205,7 +199,7 @@ class Finding(BaseModel):
     revelation: Revelation
 
 
-def findings_of(state: GameState, *, policy: InformationPolicy) -> tuple[Finding, ...]:
+def findings_of(state: GameState) -> tuple[Finding, ...]:
     """What the seers of this table learned tonight.
 
     Delivered with the rest of the night rather than the moment she looks: the
@@ -217,7 +211,7 @@ def findings_of(state: GameState, *, policy: InformationPolicy) -> tuple[Finding
             seer=choice.actor,
             target=choice.target,
             revelation=Revelation.of(
-                state.player(choice.target).role, in_full=policy.seer_learns_exact_role
+                state.player(choice.target).role, in_full=state.rules.roles.seer_learns_exact_role
             ),
         )
         for choice in state.night_choices

@@ -12,6 +12,8 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from pydantic import ValidationError
+
 from lupus_ex_machina.agents.scripted import RandomAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.composition import (
@@ -22,6 +24,7 @@ from lupus_ex_machina.engine.composition import (
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.rules import GameRules, TableOptions
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
@@ -43,10 +46,10 @@ OUTCOME_LABELS: dict[Outcome, str] = {
     Outcome.WEREWOLVES_WIN: "Victoire des loups-garous",
 }
 
-DEFAULT_PLAYERS = 8
-# Same default as the `play` target of the Makefile, so both entry points run
-# the same game when no seed is given.
-DEFAULT_SEED = 1
+# The table this command deals when the user says nothing. Read from the schema
+# rather than restated: the defaults of a game live in one place (D-068), and the
+# `play` target of the Makefile leans on the same ones.
+DEFAULTS = TableOptions()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -55,8 +58,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     rng = create_rng(options.seed)
     try:
-        state = create_game(options.players, rng=rng)
-    except UnsupportedPlayerCountError:
+        rules = GameRules(table=TableOptions(player_count=options.players, seed=options.seed))
+        state = create_game(rules, rng=rng)
+    except (UnsupportedPlayerCountError, ValidationError):
         print(
             f"Effectif non pris en charge : {options.players}. "
             f"La V1 accepte {MINIMUM_PLAYERS} à {MAXIMUM_PLAYERS} joueurs.",
@@ -76,11 +80,11 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         prog="lupus-play",
         description="Joue une partie complète avec des agents scriptés, sans aucun modèle.",
     )
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="graine de la partie")
+    parser.add_argument("--seed", type=int, default=DEFAULTS.seed, help="graine de la partie")
     parser.add_argument(
         "--players",
         type=int,
-        default=DEFAULT_PLAYERS,
+        default=DEFAULTS.player_count,
         help=f"nombre de joueurs ({MINIMUM_PLAYERS} à {MAXIMUM_PLAYERS})",
     )
     return parser.parse_args(argv)

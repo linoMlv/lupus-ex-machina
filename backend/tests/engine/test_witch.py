@@ -16,8 +16,8 @@ from lupus_ex_machina.engine.intents import PriorityPoint, RoleAction
 from lupus_ex_machina.engine.night import night_callers, resolve_night, victim_seen_by_the_witch
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
+from lupus_ex_machina.engine.rules import GameRules, RoleOptions
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 
@@ -35,13 +35,12 @@ TABLE = (
     Player(id=OTHER_VILLAGER, name="Émile", seat=4, role=RoleName.VILLAGER),
 )
 
-DISCREET = InformationPolicy()
-ASLEEP_WITHOUT_POTIONS = InformationPolicy(wake_witch_without_potions=False)
+ASLEEP_WITHOUT_POTIONS = GameRules(roles=RoleOptions(wake_witch_without_potions=False))
 
 
-def night() -> GameState:
+def night(rules: GameRules | None = None) -> GameState:
     return (
-        GameState.initial(TABLE)
+        GameState.initial(TABLE, rules=rules)
         .entering(Phase.DAY, day=1)
         .entering(Phase.RESOLUTION)
         .entering(Phase.NIGHT)
@@ -74,15 +73,15 @@ def test_the_witch_is_woken_after_the_pack() -> None:
 
 
 def test_she_sees_the_prey_the_pack_settled_on() -> None:
-    assert victim_seen_by_the_witch(taken(VILLAGER), policy=DISCREET) == VILLAGER
+    assert victim_seen_by_the_witch(taken(VILLAGER)) == VILLAGER
 
 
 def test_she_sees_nobody_when_the_pack_took_nobody() -> None:
-    assert victim_seen_by_the_witch(night(), policy=DISCREET) is None
+    assert victim_seen_by_the_witch(night()) is None
 
 
 def test_she_sees_herself_when_the_pack_came_for_her() -> None:
-    assert victim_seen_by_the_witch(taken(WITCH), policy=DISCREET) == WITCH
+    assert victim_seen_by_the_witch(taken(WITCH)) == WITCH
 
 
 # --- The potion of life (J4.5.2, J4.5.3) -------------------------------------
@@ -111,7 +110,7 @@ def test_she_may_not_save_anyone_on_a_night_without_a_victim() -> None:
 def test_a_saved_victim_lives_through_the_night() -> None:
     state = taken(VILLAGER).with_night_choice_from(WITCH, RoleActionName.HEAL, VILLAGER)
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert victims == ()
     assert resolved.is_alive(VILLAGER)
@@ -139,7 +138,7 @@ def test_she_may_not_poison_the_dead() -> None:
 def test_a_poisoned_player_dies_with_the_night() -> None:
     state = night().with_night_choice_from(WITCH, RoleActionName.POISON, VILLAGER)
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert set(victims) == {VILLAGER}
     assert not resolved.is_alive(VILLAGER)
@@ -148,7 +147,7 @@ def test_a_poisoned_player_dies_with_the_night() -> None:
 def test_the_pack_and_the_poison_can_take_two_in_one_night() -> None:
     state = taken(VILLAGER).with_night_choice_from(WITCH, RoleActionName.POISON, OTHER_VILLAGER)
 
-    resolved, victims = resolve_night(state, policy=DISCREET)
+    resolved, victims = resolve_night(state)
 
     assert set(victims) == {VILLAGER, OTHER_VILLAGER}
     assert len(resolved.living) == len(TABLE) - 2
@@ -187,7 +186,7 @@ def test_a_spent_potion_survives_the_end_of_a_round() -> None:
 def test_using_a_potion_spends_it() -> None:
     state = taken(VILLAGER).with_night_choice_from(WITCH, RoleActionName.HEAL, VILLAGER)
 
-    resolved, _ = resolve_night(state, policy=DISCREET)
+    resolved, _ = resolve_night(state)
 
     assert resolved.has_spent(WITCH, RoleActionName.HEAL)
     assert not resolved.has_spent(WITCH, RoleActionName.POISON)
@@ -197,7 +196,7 @@ def test_using_a_potion_spends_it() -> None:
 
 
 def test_by_default_she_is_woken_even_with_no_potions_left() -> None:
-    assert InformationPolicy().wake_witch_without_potions is True
+    assert RoleOptions().wake_witch_without_potions is True
 
 
 def test_an_empty_handed_witch_is_still_called_by_default() -> None:
@@ -207,23 +206,23 @@ def test_an_empty_handed_witch_is_still_called_by_default() -> None:
         .with_power_spent_by(WITCH, RoleActionName.POISON)
     )
 
-    assert WITCH in {player.id for player in night_callers(state, policy=DISCREET)}
+    assert WITCH in {player.id for player in night_callers(state)}
 
 
 def test_an_empty_handed_witch_sleeps_through_when_the_setting_says_so() -> None:
     state = (
-        night()
+        night(ASLEEP_WITHOUT_POTIONS)
         .with_power_spent_by(WITCH, RoleActionName.HEAL)
         .with_power_spent_by(WITCH, RoleActionName.POISON)
     )
 
-    called = {player.id for player in night_callers(state, policy=ASLEEP_WITHOUT_POTIONS)}
+    called = {player.id for player in night_callers(state)}
 
     assert WITCH not in called
     assert WOLF in called, "the rest of the night is untouched"
 
 
 def test_a_witch_with_one_potion_left_is_always_called() -> None:
-    state = night().with_power_spent_by(WITCH, RoleActionName.HEAL)
+    state = night(ASLEEP_WITHOUT_POTIONS).with_power_spent_by(WITCH, RoleActionName.HEAL)
 
-    assert WITCH in {player.id for player in night_callers(state, policy=ASLEEP_WITHOUT_POTIONS)}
+    assert WITCH in {player.id for player in night_callers(state)}

@@ -22,8 +22,8 @@ from lupus_ex_machina.engine.intents import RoleAction, Wait
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
-from lupus_ex_machina.engine.policy import InformationPolicy
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
+from lupus_ex_machina.engine.rules import GameRules, RoleOptions
 from lupus_ex_machina.engine.runner import GameResult, play_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
@@ -40,8 +40,8 @@ TABLE = (
     Player(id=VILLAGER, name="Diane", seat=3, role=RoleName.VILLAGER),
 )
 
-MANDATORY = InformationPolicy()
-OPTIONAL = InformationPolicy(hunter_must_shoot=False)
+MANDATORY = GameRules()
+OPTIONAL = GameRules(roles=RoleOptions(hunter_must_shoot=False))
 
 
 def shot(target: PlayerId) -> RoleAction:
@@ -161,7 +161,7 @@ def test_a_living_hunter_has_nothing_to_fire() -> None:
 
 
 def test_by_default_the_shot_cannot_be_given_up() -> None:
-    assert InformationPolicy().hunter_must_shoot is True
+    assert RoleOptions().hunter_must_shoot is True
 
 
 def test_a_mandatory_shot_finds_a_target_on_its_own() -> None:
@@ -197,7 +197,7 @@ def test_the_engine_picks_the_same_target_on_every_run() -> None:
 
 def test_an_optional_shot_may_be_given_up() -> None:
     """The configuration can hand the choice back (D-055)."""
-    assert OPTIONAL.hunter_must_shoot is False
+    assert OPTIONAL.roles.hunter_must_shoot is False
 
 
 def test_a_living_hunter_in_the_shot_phase_has_no_shot_to_fire() -> None:
@@ -226,17 +226,16 @@ A_TABLE_LED_BY_A_HUNTER = (
 )
 
 
-def a_game_where_the_hunter_is_lynched(policy: InformationPolicy) -> GameResult:
+def a_game_where_the_hunter_is_lynched(rules: GameRules) -> GameResult:
     """Everyone accuses the lowest seat, which is the hunter; he never aims."""
     agents: dict[PlayerId, Agent] = {
         player.id: SilentAgent() if player.id == HUNTER else AlwaysAccuseAgent()
         for player in A_TABLE_LED_BY_A_HUNTER
     }
     return play_game(
-        GameState.initial(A_TABLE_LED_BY_A_HUNTER),
+        GameState.initial(A_TABLE_LED_BY_A_HUNTER, rules=rules),
         agents,
         journal=Journal(),
-        policy=policy,
     )
 
 

@@ -12,9 +12,10 @@ their own, away from any game. What a real debate does with them is in
 import pytest
 from pydantic import ValidationError
 
-from lupus_ex_machina.engine.bidding import Bid, BidScore, DebateRules, elect, score_of
+from lupus_ex_machina.engine.bidding import Bid, BidScore, elect, score_of
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.rules import DebateOptions
 from lupus_ex_machina.engine.state import Speech
 
 # --- What an agent answers when asked (J5.1.1) -------------------------------
@@ -47,7 +48,7 @@ def test_a_bid_says_what_it_is_for() -> None:
 
 # --- What a bid is worth once the day is taken into account (J5.1.2) ---------
 
-RULES = DebateRules()
+RULES = DebateOptions()
 
 ADELE = PlayerId("p0")
 BASILE = PlayerId("p1")
@@ -186,7 +187,7 @@ def test_the_two_costs_add_up() -> None:
 
 # --- Nothing is decided in the code (J5.1.5) ---------------------------------
 
-FLAT = DebateRules(
+FLAT = DebateOptions(
     addressed_bonus=0,
     accused_bonus=0,
     recency_penalty=0,
@@ -215,7 +216,7 @@ def test_rules_that_weigh_nothing_leave_the_urgency_alone() -> None:
 
 
 def test_a_game_may_price_an_accusation_higher() -> None:
-    fierce = DebateRules(accused_bonus=RULES.accused_bonus * 2)
+    fierce = DebateOptions(accused_bonus=RULES.accused_bonus * 2)
 
     scored = score_of(
         Bid(urgency=10, intention="Me défendre"),
@@ -229,7 +230,7 @@ def test_a_game_may_price_an_accusation_higher() -> None:
 
 def test_a_game_may_let_the_floor_be_held() -> None:
     """Turning the anti-monopoly off is a setting, not a code change."""
-    lenient = DebateRules(recency_penalty=0)
+    lenient = DebateOptions(recency_penalty=0)
 
     scored = score_of(
         Bid(urgency=10, intention="Continuer"), bidder=ADELE, floor=(spoke(ADELE),), rules=lenient
