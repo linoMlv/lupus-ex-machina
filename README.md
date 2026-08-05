@@ -91,7 +91,7 @@ regarde depuis la périphérie. L'état de la partie se lit sans un seul chiffre
 
 | Mode | Description |
 |:--|:--|
-| **🔭 Spectateur** | Vue omnisciente. Paroles, pensées internes, carnets, votes secrets, canal privé des loups — tout est visible. |
+| **🔭 Spectateur** | Vue omnisciente. Paroles, pensées internes, carnets, votes secrets, désignation de la meute — tout est visible. |
 | **🎭 Joueur** | Vous incarnez un personnage et ne voyez que l'information publique. Un bouton pour demander la parole, un autre pour la prendre en priorité juste après quelqu'un. |
 
 L'étanchéité entre les deux modes est traitée comme une propriété testée, appliquée **côté serveur
@@ -149,7 +149,7 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   victoire. Cent parties de graines différentes se terminent toutes, et deux parties de même graine
   sont strictement identiques.
 - **J3 — Modèle d'information et journal d'événements.** Chaque fait du jeu déclare qui a le droit de
-  le connaître, et une vue n'est qu'un filtre sur ce prédicat : le canal des loups, le rôle de chacun,
+  le connaître, et une vue n'est qu'un filtre sur ce prédicat : ce que la meute pèse, le rôle de chacun,
   le contenu d'un bulletin et les pensées privées ne peuvent pas atteindre qui n'y a pas droit —
   **c'est vérifié sur cent parties**, pas seulement voulu. Le journal est la source de vérité : une
   partie se rejoue intégralement depuis lui, et survit à l'aller-retour sur disque.
