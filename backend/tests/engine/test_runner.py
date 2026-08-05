@@ -43,6 +43,7 @@ from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.runner import (
     DebateControl,
+    FloorClaim,
     GameDidNotEndError,
     GameResult,
     _Run,
@@ -453,7 +454,9 @@ class Insistent:
         return TakeTurn(vote=Vote()) if view.may_vote else Wait()
 
 
-def a_day_of(urgencies: dict[int, int]) -> tuple[GameState, tuple[Event, ...]]:
+def a_day_of(
+    urgencies: dict[int, int], claim: "FloorClaim | None" = None
+) -> tuple[GameState, tuple[Event, ...]]:
     """Play one debate day where each seat bids the urgency it was given.
 
     The day alone rather than a whole game: what the auction does is the thing
@@ -464,7 +467,7 @@ def a_day_of(urgencies: dict[int, int]) -> tuple[GameState, tuple[Event, ...]]:
         player.id: Insistent(urgencies[player.seat]) for player in state.players
     }
     journal = Journal()
-    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3))
+    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3), claim=claim)
 
     run.play_day(run.enter(state, Phase.DAY, day=2))
     return state, journal.events
@@ -524,12 +527,22 @@ def test_an_auction_is_for_the_spectator_alone() -> None:
 
 
 def a_day_played_by(
-    agents: dict[PlayerId, Agent], control: DebateControl | None = None
+    agents: dict[PlayerId, Agent],
+    control: DebateControl | None = None,
+    claim: "FloorClaim | None" = None,
 ) -> tuple[Event, ...]:
     """Play one debate day with the given agents, and hand back its journal."""
     state = create_game(8, rng=create_rng(12))
     journal = Journal()
-    run = _Run(agents, journal, InformationPolicy(), DebateRules(), create_rng(3), control=control)
+    run = _Run(
+        agents,
+        journal,
+        InformationPolicy(),
+        DebateRules(),
+        create_rng(3),
+        control=control,
+        claim=claim,
+    )
 
     run.play_day(run.enter(state, Phase.DAY, day=2))
     return journal.events
@@ -768,3 +781,116 @@ def test_the_count_is_public() -> None:
     counted = counts_in(a_settled_day(policy=InformationPolicy()))
 
     assert counted[0].audience.scope is VisibilityScope.PUBLIC
+
+
+# --- The human player's two buttons (J5.6, D-014) ----------------------------
+
+
+def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
+    """The human player's first button is a bid like any other (J5.6.1).
+
+    The contrast with the second one is the whole of D-014: the same seat, with
+    the same faint wish to speak, is passed over by the auction and served at
+    once by the priority button. One asks, the other takes.
+    """
+    state = create_game(8, rng=create_rng(12))
+    quiet = state.players[5].id
+    urgencies = {seat: (0 if seat == 5 else 100) for seat in range(8)}
+
+    _, asked = a_day_of(urgencies)
+
+    claim = FloorClaim()
+    claim.claim(quiet)
+    _, took = a_day_of(urgencies, claim=claim)
+
+    assert speakers_of(asked)[0] != quiet, "wanting it a little wins nothing"
+    assert speakers_of(took)[0] == quiet, "the button owes the auction nothing"
+
+
+def test_the_priority_button_takes_the_next_turn_whatever_the_bids() -> None:
+    """D-014: absolute priority, and it does not need to win anything."""
+    state = create_game(8, rng=create_rng(12))
+    quiet = state.players[5].id
+    claim = FloorClaim()
+    claim.claim(quiet)
+
+    _, events = a_day_of({seat: (0 if seat == 5 else 100) for seat in range(8)}, claim=claim)
+
+    assert speakers_of(events)[0] == quiet
+
+
+def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
+    """It applies at the end of the turn under way, never inside it (D-014)."""
+    state = create_game(8, rng=create_rng(12))
+    quiet = state.players[5].id
+    claim = FloorClaim()
+
+    class ClaimsWhileSpeaking:
+        """Presses the button in the middle of somebody else's turn."""
+
+        def bid(self, view: PlayerView) -> Bid:
+            return Bid(urgency=100, intention="Parler.")
+
+        def decide(self, view: PlayerView) -> Intent:
+            claim.claim(quiet)
+            return TakeTurn(speech="Je finis ma phrase.") if view.may_speak else Wait()
+
+    agents: dict[PlayerId, Agent] = {
+        player.id: (Insistent(0) if player.id == quiet else ClaimsWhileSpeaking())
+        for player in state.players
+    }
+    events = a_day_played_by(agents, claim=claim)
+    spoken = speakers_of(events)
+
+    assert spoken[0] != quiet, "the turn under way was finished first"
+    assert spoken[1] == quiet, "and the button was honoured at the next one"
+
+
+def test_a_claim_is_spent_once_it_is_honoured() -> None:
+    """Otherwise the button would hand its owner the floor for the rest of the day."""
+    claim = FloorClaim()
+    claim.claim(PlayerId("player-5"))
+
+    assert claim.take() == PlayerId("player-5")
+    assert claim.take() is None
+
+
+def test_a_floor_nobody_claimed_is_nobody_s() -> None:
+    assert FloorClaim().take() is None
+
+
+def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
+    """A button pressed about a turn that no longer exists changes nothing.
+
+    Voting gives up the floor for the round (D-013), so the claim of a player
+    who has voted has nothing to claim. Honoured anyway, it would hand the turn
+    to someone the rules then refuse, and the debate would read that refusal as
+    a table with nothing left to say (D-060) and call the vote early.
+    """
+    state = create_game(8, rng=create_rng(12))
+    voted = state.players[5].id
+    claim = FloorClaim()
+
+    agents: dict[PlayerId, Agent] = {
+        player.id: (VotesFor(None) if player.id == voted else Insistent(50))
+        for player in state.players
+    }
+    run = _Run(
+        agents,
+        journal := Journal(),
+        InformationPolicy(),
+        DebateRules(),
+        create_rng(3),
+        claim=claim,
+    )
+    opened = run.enter(state, Phase.DAY, day=2)
+
+    # That seat votes, gives up the floor, and only then presses the button.
+    opened = run._apply(opened, voted, TakeTurn(vote=Vote()))
+    claim.claim(voted)
+    run.play_day(opened)
+
+    spoken = speakers_of(journal.events)
+
+    assert voted not in spoken, "it had given up the floor"
+    assert spoken, "and the debate carried on without it"

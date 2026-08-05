@@ -24,6 +24,7 @@ from lupus_ex_machina.engine.events import (
     EventPayload,
     Fact,
     FloorAuctioned,
+    FloorClaimed,
     ForcedVoteReason,
     GameEnded,
     IntentRejected,
@@ -117,6 +118,7 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         BallotsRevealed(ballots=(RevealedBallot(voter=WOLF, target=VILLAGER),)),
         Visibility.public(),
     ),
+    (FloorClaimed(player=WOLF), Visibility.public()),
 ]
 
 

@@ -61,6 +61,7 @@ class EventKind(StrEnum):
     FLOOR_AUCTIONED = "floor_auctioned"
     VOTE_FORCED = "vote_forced"
     BALLOTS_REVEALED = "ballots_revealed"
+    FLOOR_CLAIMED = "floor_claimed"
 
 
 class Fact(BaseModel, ABC):
@@ -455,6 +456,23 @@ class FloorAuctioned(Fact):
         return Visibility.spectator_only()
 
 
+class FloorClaimed(Fact):
+    """The human player took the floor with their button rather than by bidding.
+
+    Public: the table sees somebody speak out of turn, which is exactly what the
+    button does. Hiding it would make the debate look like it arbitrated
+    something it never arbitrated.
+    """
+
+    kind: Literal[EventKind.FLOOR_CLAIMED] = EventKind.FLOOR_CLAIMED
+    player: PlayerId
+
+    @property
+    def audience(self) -> Visibility:
+        """Public: interrupting is not a secret."""
+        return Visibility.public()
+
+
 class IntentRejected(Fact):
     """An agent asked for something the rules refuse.
 
@@ -533,7 +551,8 @@ EventPayload = Annotated[
     | NotebookEntryRecorded
     | FloorAuctioned
     | VoteForced
-    | BallotsRevealed,
+    | BallotsRevealed
+    | FloorClaimed,
     Field(discriminator="kind"),
 ]
 

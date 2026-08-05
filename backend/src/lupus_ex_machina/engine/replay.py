@@ -24,6 +24,7 @@ from lupus_ex_machina.engine.events import (
     BallotsRevealed,
     Event,
     FloorAuctioned,
+    FloorClaimed,
     GameEnded,
     IntentRejected,
     NightPowerUsed,
@@ -130,6 +131,7 @@ class _Replay:
             case (
                 BallotsRevealed()
                 | FloorAuctioned()
+                | FloorClaimed()
                 | VoteForced()
                 | PackRevealed()
                 | PackSpeechDelivered()

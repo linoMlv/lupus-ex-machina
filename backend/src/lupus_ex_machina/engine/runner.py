@@ -34,6 +34,7 @@ from lupus_ex_machina.engine.events import (
     Event,
     EventPayload,
     FloorAuctioned,
+    FloorClaimed,
     ForcedVoteReason,
     GameEnded,
     IntentRejected,
@@ -157,6 +158,33 @@ class DebateControl:
         return self._turns_left is not None and self._turns_left <= 0
 
 
+class FloorClaim:
+    """The human player's claim on the next turn at the floor (D-014).
+
+    Absolute priority, and it wins nothing: the claim is honoured instead of an
+    auction rather than inside one. It is read *between* turns, which is the
+    whole of "at the end of the turn under way, never inside it" — a turn is
+    played to its end before the claim is looked at again.
+
+    Spent once honoured, otherwise pressing the button would hand its owner the
+    floor for the rest of the day. Mutable and read late, like DebateControl,
+    because it is a button the user presses during the game (J11).
+    """
+
+    def __init__(self) -> None:
+        """Start with nobody claiming anything."""
+        self._claimed_by: PlayerId | None = None
+
+    def claim(self, player: PlayerId) -> None:
+        """Claim the next turn at the floor for that player."""
+        self._claimed_by = player
+
+    def take(self) -> PlayerId | None:
+        """Hand back whoever claimed the floor, and forget the claim."""
+        claimed, self._claimed_by = self._claimed_by, None
+        return claimed
+
+
 class GameDidNotEndError(EngineError, RuntimeError):
     """The round budget ran out — always an engine bug, never a game outcome."""
 
@@ -182,6 +210,7 @@ def play_game(
     policy: InformationPolicy | None = None,
     debate: DebateRules | None = None,
     control: DebateControl | None = None,
+    claim: FloorClaim | None = None,
     rng: Rng | None = None,
 ) -> GameResult:
     """Play a full game and return who won.
@@ -202,6 +231,7 @@ def play_game(
         debate if debate is not None else DebateRules(),
         rng if rng is not None else create_rng(FALLBACK_SEED),
         control=control if control is not None else DebateControl(),
+        claim=claim if claim is not None else FloorClaim(),
     )
     state = run.open_the_game(state)
     state = run.play_night_zero(state)
@@ -232,6 +262,7 @@ class _Run:
         rng: Rng,
         *,
         control: DebateControl | None = None,
+        claim: FloorClaim | None = None,
     ) -> None:
         self._agents = agents
         self._journal = journal
@@ -239,6 +270,7 @@ class _Run:
         self._debate_rules = debate
         self._rng = rng
         self._control = control if control is not None else DebateControl()
+        self._claim = claim if claim is not None else FloorClaim()
         self._rejected = 0
 
     # --- Phases ----------------------------------------------------------
@@ -364,16 +396,35 @@ class _Run:
         for nothing, and so does an intent the rules refused: what matters is
         whether the round moved, not whether somebody was asked.
         """
+        speaker = self._claimed_floor(state) or self._won_floor(state)
+        if speaker is None:
+            return state, False
+
+        before = _round_progress(state)
+        state = self._apply(state, speaker, self._ask(state, speaker))
+        return state, _round_progress(state) != before
+
+    def _claimed_floor(self, state: GameState) -> PlayerId | None:
+        """Whoever pressed the priority button, when they may still speak (D-014).
+
+        A claim from a player the round has nothing left to offer — dead, or
+        already voted — is dropped rather than held: it was made about a turn
+        that no longer exists.
+        """
+        claimed = self._claim.take()
+        if claimed is None or not project(state, claimed).may_speak:
+            return None
+
+        self._journal.record(FloorClaimed(player=claimed), at=state)
+        return claimed
+
+    def _won_floor(self, state: GameState) -> PlayerId | None:
+        """Hold an auction and hand back whoever won it, if anyone did."""
         auction = elect(
             self._bids_of(state), floor=state.floor, rules=self._debate_rules, rng=self._rng
         )
         self._journal.record(FloorAuctioned(scores=auction.scores, winner=auction.winner), at=state)
-        if auction.winner is None:
-            return state, False
-
-        before = _round_progress(state)
-        state = self._apply(state, auction.winner, self._ask(state, auction.winner))
-        return state, _round_progress(state) != before
+        return auction.winner
 
     def _bids_of(self, state: GameState) -> dict[PlayerId, Bid]:
         """Ask everyone who still holds the floor how badly they want it.
