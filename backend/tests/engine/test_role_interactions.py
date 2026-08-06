@@ -8,7 +8,7 @@ engine disagrees with them, the engine is wrong.
 
 import pytest
 
-from lupus_ex_machina.agents.scripted import RandomAgent, SilentAgent
+from lupus_ex_machina.agents.scripted import RandomAgent, Scripted, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import (
@@ -43,7 +43,7 @@ from lupus_ex_machina.engine.views import PlayerView
 # --- Agents built for one scenario each --------------------------------------
 
 
-class HuntsFirst:
+class HuntsFirst(Scripted):
     """A wolf that always puts its whole budget on the lowest-seated prey."""
 
     async def bid(self, view: PlayerView) -> Bid:
@@ -65,7 +65,7 @@ class HuntsFirst:
         return Turn(intent=Wait())
 
 
-class AimsAt:
+class AimsAt(Scripted):
     """Someone who fires at a named player, and otherwise keeps quiet."""
 
     def __init__(self, target: PlayerId) -> None:
@@ -288,7 +288,7 @@ async def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() ->
 # --- The witch is shown what the pack settled on, whenever it settled --------
 
 
-class SavesWhoeverIsShown:
+class SavesWhoeverIsShown(Scripted):
     """A witch who pours her potion of life on the victim she is shown (D-029)."""
 
     async def bid(self, view: PlayerView) -> Bid:
@@ -302,7 +302,7 @@ class SavesWhoeverIsShown:
         return Turn(intent=TakeTurn(vote=Vote()) if view.may_vote else Wait())
 
 
-class SplitsThenSettles:
+class SplitsThenSettles(Scripted):
     """A wolf that ties the pack on the first round, then names one prey.
 
     A single wolf splitting its budget evenly is the simplest way to reach the

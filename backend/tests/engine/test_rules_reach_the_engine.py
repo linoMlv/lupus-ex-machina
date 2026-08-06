@@ -13,7 +13,7 @@ alone cannot be told about a restriction only the caller knew.
 
 import pytest
 
-from lupus_ex_machina.agents.scripted import RandomAgent
+from lupus_ex_machina.agents.scripted import RandomAgent, Scripted
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid, elect
 from lupus_ex_machina.engine.errors import IllegalIntentError
@@ -274,7 +274,7 @@ async def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
     raise AssertionError("the day never closed on its budget")
 
 
-class _NeverVotes:
+class _NeverVotes(Scripted):
     """A player who always wants the floor and never closes the round."""
 
     async def bid(self, view: PlayerView) -> Bid:

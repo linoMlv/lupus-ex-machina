@@ -12,6 +12,7 @@ from lupus_ex_machina.agents.scripted import (
     AlwaysAccuseAgent,
     RandomAgent,
     RogueAgent,
+    Scripted,
     SilentAgent,
 )
 from lupus_ex_machina.engine.agent import Agent
@@ -280,7 +281,7 @@ async def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
     assert result.rejected_intents > 0
 
 
-class TooEagerOnNightZeroAgent:
+class TooEagerOnNightZeroAgent(Scripted):
     """Takes the floor on Night 0, where nothing but waiting is legal. Sane after."""
 
     def __init__(self, rng: Rng) -> None:
@@ -316,7 +317,7 @@ async def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
     assert result.rejected_intents >= len(state.players)
 
 
-class NeverVotesAgent:
+class NeverVotesAgent(Scripted):
     """Waits forever: legal (D-048), and a way to stall a round."""
 
     async def bid(self, view: PlayerView) -> Bid:
@@ -344,7 +345,7 @@ async def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
 async def test_the_engine_refuses_to_loop_forever() -> None:
     """The round budget is a safety net, not a rule: exceeding it is a bug."""
 
-    class ImmortalAgent:
+    class ImmortalAgent(Scripted):
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Voter.")
 
@@ -361,7 +362,7 @@ async def test_the_engine_refuses_to_loop_forever() -> None:
 # --- What each of the three turns actually does (J5.2.2) ---------------------
 
 
-class TakesOneTurn:
+class TakesOneTurn(Scripted):
     """Plays a turn written by the test on its first go, then waits for good."""
 
     def __init__(self, turn: TakeTurn) -> None:
@@ -444,7 +445,7 @@ def test_a_turn_remembers_whom_it_addressed_and_accused() -> None:
 # --- The floor is auctioned, not passed round the table (J5.3.3, D-002) ------
 
 
-class Insistent:
+class Insistent(Scripted):
     """Wants the floor as much as the scale allows, and says so at length."""
 
     def __init__(self, urgency: int) -> None:
@@ -573,7 +574,7 @@ async def test_a_turn_nobody_used_means_the_debate_is_over() -> None:
 async def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
     """The budget of turns is the other way out, and it says so in the journal."""
 
-    class TalksForever:
+    class TalksForever(Scripted):
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
@@ -616,7 +617,7 @@ def test_the_moderator_leaves_the_debate_alone_by_default() -> None:
 
 
 async def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
-    class TalksForever:
+    class TalksForever(Scripted):
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
@@ -638,7 +639,7 @@ async def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
     """
     control = DebateControl()
 
-    class SpeaksThenCallsTime:
+    class SpeaksThenCallsTime(Scripted):
         """Speaks once, and cuts the debate short as it does — as the user would."""
 
         async def bid(self, view: PlayerView) -> Bid:
@@ -659,7 +660,7 @@ async def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
 # --- A tied vote is put back to the table, once (J5.4, D-050, D-062) ---------
 
 
-class VotesFor:
+class VotesFor(Scripted):
     """Votes for whoever the test names, and never says a word."""
 
     def __init__(self, target: PlayerId | None) -> None:
@@ -844,7 +845,7 @@ async def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
     quiet = state.players[5].id
     claim = FloorClaim()
 
-    class ClaimsWhileSpeaking:
+    class ClaimsWhileSpeaking(Scripted):
         """Presses the button in the middle of somebody else's turn."""
 
         async def bid(self, view: PlayerView) -> Bid:

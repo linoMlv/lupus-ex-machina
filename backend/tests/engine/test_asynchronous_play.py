@@ -8,6 +8,7 @@ the cheapest stand-in for the latency J7 is about to introduce.
 
 import asyncio
 
+from lupus_ex_machina.agents.scripted import Scripted
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.intents import (
@@ -30,7 +31,7 @@ from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.views import PlayerView
 
 
-class AwaitedAgent:
+class AwaitedAgent(Scripted):
     """Names the first player it may name, but only after suspending.
 
     Deliberately written out rather than wrapped around a scripted agent: what

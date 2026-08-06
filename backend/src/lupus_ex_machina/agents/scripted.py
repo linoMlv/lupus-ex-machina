@@ -11,6 +11,11 @@ are a normal path that deserves to be walked as often as the others.
 Each of them also bids for the floor (D-002). The bids are blunt on purpose —
 what a scripted agent is for is exercising the protocol, not playing well — but
 they differ enough between agents that an auction has something to arbitrate.
+
+
+None of them reflects at the close of a round (D-086): a scripted agent has no
+thoughts to take stock with, and one that returned an empty one would still be
+saying something. :class:`Scripted` gives them all the same silence.
 """
 
 from lupus_ex_machina.engine.bidding import Bid
@@ -27,11 +32,24 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.roles import RoleActionName
-from lupus_ex_machina.engine.turn import Turn
+from lupus_ex_machina.engine.turn import Reflection, Turn
 from lupus_ex_machina.engine.views import PlayerView
 
 
-class SilentAgent:
+class Scripted:
+    """What every scripted agent shares: nothing to take stock with.
+
+    A round closing teaches a model something (D-086); it teaches a table of
+    rules nothing at all. Answering an empty reflection here rather than in each
+    agent keeps the four of them about what they actually differ on.
+    """
+
+    async def reflect(self, view: PlayerView) -> Reflection:
+        """Say nothing, which is what a scripted agent has to say."""
+        return Reflection()
+
+
+class SilentAgent(Scripted):
     """Never speaks, never names anyone: waits, and votes blank when it votes.
 
     Useful as a floor: a game where everyone stays silent must still terminate.
@@ -52,7 +70,7 @@ class SilentAgent:
         return Wait()
 
 
-class AlwaysAccuseAgent:
+class AlwaysAccuseAgent(Scripted):
     """Always names the first player it may name.
 
     The mirror image of the silent agent: it closes rounds as fast as possible,
@@ -82,7 +100,7 @@ class AlwaysAccuseAgent:
         return Wait()
 
 
-class RogueAgent:
+class RogueAgent(Scripted):
     """Always tries to devour someone, whatever the phase allows.
 
     Every intent it plays is refused outside the pack's turn, which is what
@@ -100,7 +118,7 @@ class RogueAgent:
         return Turn(intent=RoleAction(action=RoleActionName.DEVOUR, target=prey))
 
 
-class RandomAgent:
+class RandomAgent(Scripted):
     """Picks uniformly among the legal moves, drawing from the injected generator.
 
     Every draw goes through that generator so a failing game can be replayed

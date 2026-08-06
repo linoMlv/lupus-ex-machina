@@ -12,7 +12,7 @@ turn *contains* is J7.4's business, that it is collected at all is this one's.
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, SilentAgent
+from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, Scripted, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import (
@@ -20,6 +20,7 @@ from lupus_ex_machina.engine.events import (
     NotebookEntryRecorded,
     PrivateReasoningRecorded,
     SpeechDelivered,
+    VoteResolved,
 )
 from lupus_ex_machina.engine.journal import project_journal
 from lupus_ex_machina.engine.notebook import notebook_of
@@ -33,9 +34,11 @@ from lupus_ex_machina.engine.turn import (
     DropNote,
     NotebookOperation,
     NotebookOperationName,
+    Reflection,
     ReviseNote,
     Turn,
 )
+from lupus_ex_machina.engine.validation import BOOTSTRAP_DAY
 from lupus_ex_machina.engine.views import PlayerView
 from lupus_ex_machina.engine.visibility import Recipient
 
@@ -49,7 +52,7 @@ REVISED_NOTE = "Adèle a parlé la première, et trop vite."
 FORCED_DESIGNATION = GameRules(night=NightOptions(require_werewolf_target=True))
 
 
-class ThinkingAgent:
+class ThinkingAgent(Scripted):
     """Plays like the accusing agent, but says what it was thinking first.
 
     The move itself is delegated rather than rewritten: what is under test is
@@ -198,7 +201,7 @@ def test_the_three_well_formed_operations_are_accepted(
 # --- The notebook is rebuilt from the journal (D-088) ------------------------
 
 
-class ScribblingAgent:
+class ScribblingAgent(Scripted):
     """Fills a notebook the way a model would: adds, then revises, then drops.
 
     Its moves are the silent agent's — what matters here is what it writes, and
@@ -266,7 +269,7 @@ async def test_a_notebook_is_read_from_its_own_author_alone() -> None:
 # --- The notebook is capped, and the engine is what caps it (D-005) ----------
 
 
-class OverwritesEverything:
+class OverwritesEverything(Scripted):
     """Writes far more notes than the rules allow, and aims at notes that never existed.
 
     Exactly what a model does when the prompt slips: the cap has to be held by
@@ -346,3 +349,77 @@ async def test_an_operation_aimed_at_a_note_that_does_not_exist_is_refused(
         for event in result.journal
         if isinstance(event.payload, IntentRejected) and event.payload.actor == writer
     ]
+
+
+# --- Thinking once more when the round closes (D-086) ------------------------
+
+CLOSING_THOUGHT = "Le dépouillement change tout ce que je croyais."
+
+
+class ThinksAgainAtTheClose(ThinkingAgent):
+    """Thinks on its turn like any agent, and once more when the round closes."""
+
+    async def reflect(self, view: PlayerView) -> Reflection:
+        """Take stock of what the count and the resolution just taught."""
+        return Reflection(reasoning=CLOSING_THOUGHT)
+
+
+async def a_game_of_second_thoughts() -> GameResult:
+    """A whole game where every seat thinks again at every close."""
+    rng = create_rng(3)
+    state = create_game(GameRules(), rng=rng)
+    agents: dict[PlayerId, Agent] = {player.id: ThinksAgainAtTheClose() for player in state.players}
+    return await play_game(state, agents, rng=rng)
+
+
+async def test_a_player_who_has_voted_thinks_again_when_the_round_closes() -> None:
+    """D-086: voting ends the floor, not the thinking.
+
+    The moment is chosen rather than incidental — the count and the resolution
+    are what teaches a player the most in a whole round.
+    """
+    result = await a_game_of_second_thoughts()
+
+    closing = [
+        event
+        for event in result.journal
+        if isinstance(event.payload, PrivateReasoningRecorded)
+        and event.payload.reasoning == CLOSING_THOUGHT
+    ]
+
+    assert closing, "nobody took stock at the close"
+
+
+async def test_taking_stock_happens_after_the_count_rather_than_before() -> None:
+    """Asked any earlier, it would be a second turn rather than a second thought."""
+    result = await a_game_of_second_thoughts()
+    counted = next(
+        event.sequence for event in result.journal if isinstance(event.payload, VoteResolved)
+    )
+    took_stock = next(
+        event.sequence
+        for event in result.journal
+        if isinstance(event.payload, PrivateReasoningRecorded)
+        and event.payload.reasoning == CLOSING_THOUGHT
+    )
+
+    assert took_stock > counted
+
+
+async def test_every_living_player_takes_stock_at_the_close() -> None:
+    """Everyone at the table has voted by then, so everyone is asked (D-013).
+
+    Day 1 is where the whole table is still there: its only legal vote is a
+    blank one (D-032), so the round closes without eliminating anybody.
+    """
+    result = await a_game_of_second_thoughts()
+
+    took_stock = {
+        event.payload.player
+        for event in result.journal
+        if isinstance(event.payload, PrivateReasoningRecorded)
+        and event.payload.reasoning == CLOSING_THOUGHT
+        and event.day == BOOTSTRAP_DAY
+    }
+
+    assert len(took_stock) == len(result.state.players)

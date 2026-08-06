@@ -323,7 +323,28 @@ class _Run:
             state = await self._hold_a_silent_runoff(state, tied)
 
         self._read_the_count_out(state)
-        return await self._resolve(state, resolve_day, _vote_outcome)
+        state, outcome = await self._resolve(state, resolve_day, _vote_outcome)
+        if outcome is None:
+            await self._let_the_table_take_stock(state)
+        return state, outcome
+
+    async def _let_the_table_take_stock(self, state: GameState) -> None:
+        """Ask everyone left what they make of the round that just closed (D-086).
+
+        Here and nowhere else in the round: voting ends the floor, not the
+        thinking, and the count and the resolution are what teaches a player the
+        most. Asked at every turn at the floor instead, this would be one large
+        model call per silent player per turn (GL-7).
+
+        Nobody is asked once the game is over — there is no next round to bring
+        anything to. All at once, like the auction, for the same reason.
+        """
+        survivors = tuple(player.id for player in state.living)
+        thoughts = await asyncio.gather(
+            *(self._agents[player].reflect(project(state, player)) for player in survivors)
+        )
+        for player, thought in zip(survivors, thoughts, strict=True):
+            self._write_down_what_was_thought(state, player, thought)
 
     def _read_the_count_out(self, state: GameState) -> None:
         """Show the table who named whom, if the configuration allows it (D-013).
