@@ -77,6 +77,7 @@ def test_the_debate_defaults_to_the_coefficients_of_the_protocol() -> None:
         "speech_word_limit": 50,
         "analysis_word_limit": 40,
         "notebook_word_limit": 20,
+        "notebook_note_limit": 30,
     }
 
 

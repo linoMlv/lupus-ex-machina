@@ -268,6 +268,13 @@ class DebateOptions(BaseModel):
         ge=1,
         description="Nombre maximal de mots d'une note de carnet.",
     )
+    notebook_note_limit: int = Field(
+        default=30,
+        ge=1,
+        description="Nombre maximal de notes qu'un carnet peut contenir.",
+    )
+    """Capped so its author has to arbitrate what is worth keeping (D-005). The
+    engine holds the cap: one asked for in a prompt is one a model talks past."""
 
 
 class VoteOptions(BaseModel):

@@ -122,6 +122,13 @@
           "minimum": 1,
           "title": "Notebook Word Limit",
           "type": "integer"
+        },
+        "notebook_note_limit": {
+          "default": 30,
+          "description": "Nombre maximal de notes qu'un carnet peut contenir.",
+          "minimum": 1,
+          "title": "Notebook Note Limit",
+          "type": "integer"
         }
       },
       "title": "DebateOptions",

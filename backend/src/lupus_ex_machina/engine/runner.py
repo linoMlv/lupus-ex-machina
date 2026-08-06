@@ -79,7 +79,7 @@ from lupus_ex_machina.engine.night import (
     resolve_night,
     tied_prey,
 )
-from lupus_ex_machina.engine.notebook import next_entry_for
+from lupus_ex_machina.engine.notebook import next_entry_for, notebook_of, refusal_for
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
@@ -698,7 +698,27 @@ class _Run:
                 PrivateReasoningRecorded(player=player, reasoning=reflection.reasoning), at=state
             )
         for operation in reflection.notebook:
-            self._journal.record(self._notebook_fact(player, operation), at=state)
+            self._write(state, player, operation)
+
+    def _write(self, state: GameState, player: PlayerId, operation: NotebookOperation) -> None:
+        """Apply one operation on a notebook, or refuse it out loud (D-005).
+
+        Judged against the notebook as the previous operations of the same turn
+        left it, so an agent cannot get past the cap by writing everything at
+        once. A refusal is recorded rather than passed over: an operation that
+        vanished silently would leave its author believing they wrote something.
+        """
+        refusal = refusal_for(
+            operation,
+            notebook_of(self._journal.events, player),
+            cap=state.rules.debate.notebook_note_limit,
+        )
+        if refusal is not None:
+            self._rejected += 1
+            self._journal.record(IntentRejected(actor=player, reason=refusal), at=state)
+            return
+
+        self._journal.record(self._notebook_fact(player, operation), at=state)
 
     def _notebook_fact(self, player: PlayerId, operation: NotebookOperation) -> EventPayload:
         """Turn one operation into the fact that will replay it (D-088).

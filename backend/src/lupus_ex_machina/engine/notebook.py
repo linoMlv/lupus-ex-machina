@@ -10,6 +10,7 @@ spectator can watch a belief change rather than only see what it ended up as.
 """
 
 from collections.abc import Iterable
+from typing import assert_never
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +20,7 @@ from lupus_ex_machina.engine.events import (
     NotebookEntryRecorded,
 )
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.turn import AddNote, DropNote, NotebookOperation, ReviseNote
 
 
 class Note(BaseModel):
@@ -48,6 +50,33 @@ def notebook_of(events: Iterable[Event], player: PlayerId) -> tuple[Note, ...]:
                 continue
 
     return tuple(Note(entry=entry, note=note) for entry, note in sorted(written.items()))
+
+
+def refusal_for(
+    operation: NotebookOperation, notebook: tuple[Note, ...], *, cap: int
+) -> str | None:
+    """Why that operation cannot be applied, or ``None`` when it can.
+
+    Held here rather than in the prompt: D-005 caps the notebook precisely so
+    its author has to arbitrate what is worth keeping, and a cap a model can
+    talk its way past is not one. Aiming at a note nobody wrote is the other
+    half — a model refers to notes it dropped two turns ago.
+
+    An over-full notebook is refused rather than trimmed of its oldest line:
+    trimming would leave the agent believing it kept something it no longer has,
+    and the arbitrage D-005 asks for would be made by the engine instead.
+    """
+    match operation:
+        case AddNote() if len(notebook) >= cap:
+            return f"Notebook is full at {cap} notes; drop one before adding another"
+        case AddNote():
+            return None
+        case ReviseNote(entry=entry) | DropNote(entry=entry):
+            if any(note.entry == entry for note in notebook):
+                return None
+            return f"No note numbered {entry} to write on"
+        case _:  # pragma: no cover - the union is closed, mypy proves this is dead
+            assert_never(operation)
 
 
 def next_entry_for(events: Iterable[Event], player: PlayerId) -> int:
