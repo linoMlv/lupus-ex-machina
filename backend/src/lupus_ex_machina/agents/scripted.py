@@ -27,6 +27,7 @@ from lupus_ex_machina.engine.intents import (
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.roles import RoleActionName
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.views import PlayerView
 
 
@@ -40,8 +41,12 @@ class SilentAgent:
         """Want the floor as little as the scale allows."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Wait, unless a vote is possible — then vote blank."""
+        return Turn(intent=self._move(view))
+
+    @staticmethod
+    def _move(view: PlayerView) -> Intent:
         if view.may_vote:
             return TakeTurn(vote=Vote())
         return Wait()
@@ -58,8 +63,12 @@ class AlwaysAccuseAgent:
         """Want the floor as much as the scale allows."""
         return Bid(urgency=100, intention="Accuser.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Put everything on the first prey, or vote against the first target."""
+        return Turn(intent=self._move(view))
+
+    @staticmethod
+    def _move(view: PlayerView) -> Intent:
         if IntentKind.ROLE_ACTION in view.allowed_intents and view.action_targets:
             return RoleAction(action=view.available_actions[0], target=view.action_targets[0])
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.action_targets:
@@ -85,10 +94,10 @@ class RogueAgent:
         """Bid like anyone else — what it does with the floor is the point."""
         return Bid(urgency=50, intention="Agir.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Play an intent the rules refuse: the pack never designates one by one."""
         prey = view.living_others[0] if view.living_others else view.self_id
-        return RoleAction(action=RoleActionName.DEVOUR, target=prey)
+        return Turn(intent=RoleAction(action=RoleActionName.DEVOUR, target=prey))
 
 
 class RandomAgent:
@@ -106,8 +115,11 @@ class RandomAgent:
         """Want the floor to a degree drawn at random, like everything else."""
         return Bid(urgency=self._rng.randint(0, 100), intention="Peut-être parler.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Pick a legal move at random."""
+        return Turn(intent=self._move(view))
+
+    def _move(self, view: PlayerView) -> Intent:
         kind = self._rng.choice(view.allowed_intents)
 
         match kind:

@@ -179,7 +179,7 @@ def test_facts_that_change_nothing_leave_the_state_alone() -> None:
     recorder.write(RoleRevealed(player=VILLAGER.id, role=RoleName.VILLAGER))
     recorder.write(IntentRejected(actor=WOLF.id, reason="already voted"))
     recorder.write(PrivateReasoningRecorded(player=WOLF.id, reasoning="Camille me gêne."))
-    recorder.write(NotebookEntryRecorded(player=WOLF.id, note="Camille pivote vite."))
+    recorder.write(NotebookEntryRecorded(player=WOLF.id, entry=0, note="Camille pivote vite."))
     recorder.write(GameEnded(outcome=Outcome.VILLAGE_WINS))
 
     assert replay(recorder.journal.events) == plain

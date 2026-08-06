@@ -24,7 +24,6 @@ from lupus_ex_machina.engine.events import (
     VoteForced,
 )
 from lupus_ex_machina.engine.intents import (
-    Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
@@ -50,6 +49,7 @@ from lupus_ex_machina.engine.rules import (
 from lupus_ex_machina.engine.runner import GameDidNotEndError, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import PlayerView, project
 
@@ -280,8 +280,8 @@ class _NeverVotes:
     async def bid(self, view: PlayerView) -> Bid:
         return Bid(urgency=100, intention="J'ai encore quelque chose à dire.")
 
-    async def decide(self, view: PlayerView) -> Intent:
-        return TakeTurn(speech="Je parle.") if view.may_speak else Wait()
+    async def decide(self, view: PlayerView) -> Turn:
+        return Turn(intent=TakeTurn(speech="Je parle.") if view.may_speak else Wait())
 
 
 def test_the_night_calls_the_roles_in_the_order_it_was_given() -> None:

@@ -41,12 +41,15 @@ from lupus_ex_machina.engine.events import (
     IntentRejected,
     NightPowerUsed,
     NightResolved,
+    NotebookEntryDropped,
+    NotebookEntryRecorded,
     PackRevealed,
     PhaseEntered,
     PlayerSeated,
     PowerSpent,
     PrioritiesRevealed,
     PriorityShared,
+    PrivateReasoningRecorded,
     RevealedBallot,
     RevealedShare,
     RoleAssigned,
@@ -76,12 +79,20 @@ from lupus_ex_machina.engine.night import (
     resolve_night,
     tied_prey,
 )
+from lupus_ex_machina.engine.notebook import next_entry_for
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, Team
 from lupus_ex_machina.engine.state import GameState, count_words
+from lupus_ex_machina.engine.turn import (
+    AddNote,
+    DropNote,
+    NotebookOperation,
+    Reflection,
+    ReviseNote,
+)
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
 from lupus_ex_machina.engine.views import project
@@ -662,7 +673,55 @@ class _Run:
     # --- Agents ----------------------------------------------------------
 
     async def _ask(self, state: GameState, player: PlayerId) -> Intent:
-        return await self._agents[player].decide(project(state, player))
+        """Ask a player for their turn, and write down what they made of it.
+
+        Recorded in the order a turn happens (D-083): the thought first, then
+        the note it led to, then the move. Recorded *here*, so that every way of
+        asking a player anything goes through the same place — the engine holds
+        the journal, and an agent writing its own facts would be writing into
+        the source of truth (D-001).
+        """
+        turn = await self._agents[player].decide(project(state, player))
+        self._write_down_what_was_thought(state, player, turn)
+        return turn.intent
+
+    def _write_down_what_was_thought(
+        self, state: GameState, player: PlayerId, reflection: Reflection
+    ) -> None:
+        """Record a player's private reasoning and notebook, if they had any.
+
+        Both are their author's own (D-004): the audience is carried by the
+        facts themselves, so nothing here can widen it.
+        """
+        if reflection.reasoning is not None:
+            self._journal.record(
+                PrivateReasoningRecorded(player=player, reasoning=reflection.reasoning), at=state
+            )
+        for operation in reflection.notebook:
+            self._journal.record(self._notebook_fact(player, operation), at=state)
+
+    def _notebook_fact(self, player: PlayerId, operation: NotebookOperation) -> EventPayload:
+        """Turn one operation into the fact that will replay it (D-088).
+
+        A new note is numbered here rather than by its author: the number is how
+        a later turn refers back to it, so it has to come from the one place that
+        knows every note ever written.
+        """
+        match operation:
+            case AddNote():
+                return NotebookEntryRecorded(
+                    player=player,
+                    entry=next_entry_for(self._journal.events, player),
+                    note=operation.note,
+                )
+            case ReviseNote():
+                return NotebookEntryRecorded(
+                    player=player, entry=operation.entry, note=operation.note, revised=True
+                )
+            case DropNote():
+                return NotebookEntryDropped(player=player, entry=operation.entry)
+            case _:  # pragma: no cover - the union is closed, mypy proves this is dead
+                assert_never(operation)
 
     def _apply(self, state: GameState, actor: PlayerId, intent: Intent) -> GameState:
         """Validate then apply. An intent refused costs its author a turn, nothing more."""

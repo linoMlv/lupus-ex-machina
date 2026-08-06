@@ -30,7 +30,6 @@ from lupus_ex_machina.engine.events import (
     VoteResolved,
 )
 from lupus_ex_machina.engine.intents import (
-    Intent,
     TakeTurn,
     Vote,
     Wait,
@@ -56,6 +55,7 @@ from lupus_ex_machina.engine.runner import (
 )
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
 from lupus_ex_machina.engine.views import PlayerView
 from lupus_ex_machina.engine.visibility import VisibilityScope
@@ -291,10 +291,10 @@ class TooEagerOnNightZeroAgent:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Speak out of turn on Night 0, then play normally."""
         if view.phase is Phase.NIGHT_ZERO:
-            return TakeTurn(speech="Je prends la parole trop tôt.")
+            return Turn(intent=TakeTurn(speech="Je prends la parole trop tôt."))
         return await self._sane.decide(view)
 
 
@@ -323,9 +323,9 @@ class NeverVotesAgent:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Never do anything."""
-        return Wait()
+        return Turn(intent=Wait())
 
 
 async def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
@@ -348,8 +348,8 @@ async def test_the_engine_refuses_to_loop_forever() -> None:
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Voter.")
 
-        async def decide(self, view: PlayerView) -> Intent:
-            return TakeTurn(vote=Vote())  # nobody ever dies
+        async def decide(self, view: PlayerView) -> Turn:
+            return Turn(intent=TakeTurn(vote=Vote()))  # nobody ever dies
 
     state = create_game(six_seats(), rng=create_rng(11))
     agents: dict[PlayerId, Agent] = {player.id: ImmortalAgent() for player in state.players}
@@ -373,12 +373,12 @@ class TakesOneTurn:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Play the turn once, if the rules are offering it."""
         if self._played or not (view.may_speak or view.may_vote):
-            return Wait()
+            return Turn(intent=Wait())
         self._played = True
-        return self._turn
+        return Turn(intent=self._turn)
 
 
 def one_turn_of(turn: TakeTurn) -> tuple[GameState, PlayerId, tuple[Event, ...]]:
@@ -455,11 +455,11 @@ class Insistent:
         """Always bid the same, so a test can reason about the order."""
         return Bid(urgency=self._urgency, intention="Parler.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Speak while the floor is open, then vote blank to close the round."""
         if view.may_speak:
-            return TakeTurn(speech="Je prends la parole.")
-        return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+            return Turn(intent=TakeTurn(speech="Je prends la parole."))
+        return Turn(intent=TakeTurn(vote=Vote()) if view.may_vote else Wait())
 
 
 async def a_day_of(
@@ -577,8 +577,8 @@ async def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Intent:
-            return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
+        async def decide(self, view: PlayerView) -> Turn:
+            return Turn(intent=TakeTurn(speech="Je continue.") if view.may_speak else Wait())
 
     events = await a_day_played_by(a_table_of(TalksForever))
 
@@ -620,8 +620,8 @@ async def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Intent:
-            return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
+        async def decide(self, view: PlayerView) -> Turn:
+            return Turn(intent=TakeTurn(speech="Je continue.") if view.may_speak else Wait())
 
     events = await a_day_played_by(a_table_of(TalksForever), control=DebateControl(turns_left=1))
 
@@ -644,11 +644,11 @@ async def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Turn:
             if not view.may_speak:
-                return Wait()
+                return Turn(intent=Wait())
             control.cut_to(0)
-            return TakeTurn(speech="Je serai bref.")
+            return Turn(intent=TakeTurn(speech="Je serai bref."))
 
     events = await a_day_played_by(a_table_of(SpeaksThenCallsTime), control=control)
 
@@ -670,12 +670,12 @@ class VotesFor:
         """Bid low: this seat is here to vote, not to argue."""
         return Bid(urgency=10, intention="Voter.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Name that player when the rules still offer them, otherwise vote blank."""
         if not view.may_vote:
-            return Wait()
+            return Turn(intent=Wait())
         wanted = self._target if self._target in view.vote_targets else None
-        return TakeTurn(vote=Vote(target=wanted))
+        return Turn(intent=TakeTurn(vote=Vote(target=wanted)))
 
 
 async def a_tied_day(
@@ -850,9 +850,9 @@ async def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
         async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=100, intention="Parler.")
 
-        async def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Turn:
             claim.claim(quiet)
-            return TakeTurn(speech="Je finis ma phrase.") if view.may_speak else Wait()
+            return Turn(intent=TakeTurn(speech="Je finis ma phrase.") if view.may_speak else Wait())
 
     agents: dict[PlayerId, Agent] = {
         player.id: (Insistent(0) if player.id == quiet else ClaimsWhileSpeaking())

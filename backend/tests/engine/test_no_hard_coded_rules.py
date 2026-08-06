@@ -43,6 +43,7 @@ ALLOWED: dict[str, str] = {
     "rng.Rng": "a type alias",
     "events.EventPayload": "a type alias",
     "intents.Intent": "a type alias",
+    "turn.NotebookOperation": "a type alias",
     "journal.Clock": "a type alias",
     "players.PlayerId": "a type alias",
 }

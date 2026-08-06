@@ -289,7 +289,7 @@ def a_journal_of_inner_thoughts() -> Journal:
         journal.record(
             PrivateReasoningRecorded(player=player.id, reasoning=SECRET_THOUGHT), at=state
         )
-        journal.record(NotebookEntryRecorded(player=player.id, note=SECRET_NOTE), at=state)
+        journal.record(NotebookEntryRecorded(player=player.id, entry=0, note=SECRET_NOTE), at=state)
     return journal
 
 
@@ -322,7 +322,7 @@ def test_no_word_of_another_players_thoughts_can_be_read(player: Player) -> None
         journal.record(
             PrivateReasoningRecorded(player=other.id, reasoning=SECRET_THOUGHT), at=state
         )
-        journal.record(NotebookEntryRecorded(player=other.id, note=SECRET_NOTE), at=state)
+        journal.record(NotebookEntryRecorded(player=other.id, entry=0, note=SECRET_NOTE), at=state)
 
     readable = leaves_of(project_journal(journal.events, Recipient.of(player)))
 

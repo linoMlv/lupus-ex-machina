@@ -15,7 +15,7 @@ for its bid in one go rather than one after another (GL-7).
 from typing import Protocol, runtime_checkable
 
 from lupus_ex_machina.engine.bidding import Bid
-from lupus_ex_machina.engine.intents import Intent
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.views import PlayerView
 
 
@@ -32,6 +32,10 @@ class Agent(Protocol):
         """
         ...  # pragma: no cover - a Protocol body carries no behaviour
 
-    async def decide(self, view: PlayerView) -> Intent:
-        """Return what this player wants to do, given what they know."""
+    async def decide(self, view: PlayerView) -> Turn:
+        """Return this player's whole turn: what they made of it, and what they do.
+
+        The three parts come back together because they are one thought, and
+        because each round trip to a model costs (D-004, GL-7).
+        """
         ...  # pragma: no cover - a Protocol body carries no behaviour

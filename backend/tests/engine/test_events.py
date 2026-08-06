@@ -30,6 +30,7 @@ from lupus_ex_machina.engine.events import (
     IntentRejected,
     NightPowerUsed,
     NightResolved,
+    NotebookEntryDropped,
     NotebookEntryRecorded,
     PackRevealed,
     PhaseEntered,
@@ -110,7 +111,11 @@ AUDIENCES: list[tuple[EventPayload, Visibility]] = [
         PrivateReasoningRecorded(player=WOLF, reasoning="Camille me soupçonne."),
         Visibility.for_player(WOLF),
     ),
-    (NotebookEntryRecorded(player=WOLF, note="Camille pivote vite."), Visibility.for_player(WOLF)),
+    (
+        NotebookEntryRecorded(player=WOLF, entry=0, note="Camille pivote vite."),
+        Visibility.for_player(WOLF),
+    ),
+    (NotebookEntryDropped(player=WOLF, entry=0), Visibility.for_player(WOLF)),
     (
         FloorAuctioned(scores=(BidScore(bidder=WOLF, urgency=70),), winner=WOLF),
         Visibility.spectator_only(),
@@ -208,7 +213,7 @@ def test_inner_thoughts_belong_to_their_author_and_the_spectator() -> None:
     """The separation of thought and speech is held by the code (D-004, GL-3)."""
     for payload in (
         PrivateReasoningRecorded(player=WOLF, reasoning="Je vais accuser Camille."),
-        NotebookEntryRecorded(player=WOLF, note="Camille pivote vite."),
+        NotebookEntryRecorded(player=WOLF, entry=0, note="Camille pivote vite."),
     ):
         assert payload.audience == Visibility.for_player(WOLF)
 

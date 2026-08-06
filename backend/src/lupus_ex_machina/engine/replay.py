@@ -29,6 +29,7 @@ from lupus_ex_machina.engine.events import (
     IntentRejected,
     NightPowerUsed,
     NightResolved,
+    NotebookEntryDropped,
     NotebookEntryRecorded,
     PackRevealed,
     PhaseEntered,
@@ -143,6 +144,7 @@ class _Replay:
                 | IntentRejected()
                 | PrivateReasoningRecorded()
                 | NotebookEntryRecorded()
+                | NotebookEntryDropped()
             ):
                 # Information, not effect: these facts tell the story without
                 # changing what the state holds.

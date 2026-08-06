@@ -57,6 +57,7 @@ class EventKind(StrEnum):
     GAME_ENDED = "game_ended"
     PRIVATE_REASONING_RECORDED = "private_reasoning_recorded"
     NOTEBOOK_ENTRY_RECORDED = "notebook_entry_recorded"
+    NOTEBOOK_ENTRY_DROPPED = "notebook_entry_dropped"
     FLOOR_AUCTIONED = "floor_auctioned"
     VOTE_FORCED = "vote_forced"
     BALLOTS_REVEALED = "ballots_revealed"
@@ -527,14 +528,39 @@ class PrivateReasoningRecorded(Fact):
 
 
 class NotebookEntryRecorded(Fact):
-    """A line a player wrote in their own notebook (D-005).
+    """A line a player put in their own notebook, new or rewritten (D-005).
 
-    Like private reasoning, filled in by J7; the audience is settled here.
+    The operation travels with the line, because the notebook is rebuilt by
+    replaying these facts rather than stored anywhere (D-088). Adding and
+    revising are one fact and deleting is another: a deletion carries no text,
+    and one type covering both would have to make the text optional — which
+    every reader would then have to handle, forever.
     """
 
     kind: Literal[EventKind.NOTEBOOK_ENTRY_RECORDED] = EventKind.NOTEBOOK_ENTRY_RECORDED
     player: PlayerId
-    note: str
+    entry: int = Field(ge=0)
+    note: str = Field(min_length=1)
+    revised: bool = False
+    """False for a new note, true for one written over an older one.
+
+    Kept because the history is the point (D-005): the spectator watches a
+    belief change, and a revision that looked like a first thought would hide
+    exactly what is interesting.
+    """
+
+    @property
+    def audience(self) -> Visibility:
+        """Its author, and the spectator."""
+        return Visibility.for_player(self.player)
+
+
+class NotebookEntryDropped(Fact):
+    """A line a player struck out of their own notebook (D-005)."""
+
+    kind: Literal[EventKind.NOTEBOOK_ENTRY_DROPPED] = EventKind.NOTEBOOK_ENTRY_DROPPED
+    player: PlayerId
+    entry: int = Field(ge=0)
 
     @property
     def audience(self) -> Visibility:
@@ -564,6 +590,7 @@ EventPayload = Annotated[
     | IntentRejected
     | PrivateReasoningRecorded
     | NotebookEntryRecorded
+    | NotebookEntryDropped
     | FloorAuctioned
     | VoteForced
     | BallotsRevealed

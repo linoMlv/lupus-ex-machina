@@ -18,7 +18,6 @@ from lupus_ex_machina.engine.events import (
     ShotFired,
 )
 from lupus_ex_machina.engine.intents import (
-    Intent,
     IntentKind,
     PriorityPoint,
     RoleAction,
@@ -37,6 +36,7 @@ from lupus_ex_machina.engine.rules import GameRules, NightOptions
 from lupus_ex_machina.engine.runner import GameResult, _Run, play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.engine.views import PlayerView
 
@@ -50,17 +50,19 @@ class HuntsFirst:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Weigh the first prey, otherwise stay out of the way."""
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.action_targets:
-            return SharePriority(
-                allocations=(
-                    PriorityPoint(target=view.action_targets[0], points=view.priority_budget),
+            return Turn(
+                intent=SharePriority(
+                    allocations=(
+                        PriorityPoint(target=view.action_targets[0], points=view.priority_budget),
+                    )
                 )
             )
         if view.may_vote:
-            return TakeTurn(vote=Vote())
-        return Wait()
+            return Turn(intent=TakeTurn(vote=Vote()))
+        return Turn(intent=Wait())
 
 
 class AimsAt:
@@ -74,13 +76,13 @@ class AimsAt:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Shoot the named player, otherwise vote blank or wait."""
         if RoleActionName.SHOOT in view.available_actions and self._target in view.action_targets:
-            return RoleAction(action=RoleActionName.SHOOT, target=self._target)
+            return Turn(intent=RoleAction(action=RoleActionName.SHOOT, target=self._target))
         if view.may_vote:
-            return TakeTurn(vote=Vote())
-        return Wait()
+            return Turn(intent=TakeTurn(vote=Vote()))
+        return Turn(intent=Wait())
 
 
 # --- The scenario the rules were written from (J4.7.2, D-049, D-059) ---------
@@ -293,11 +295,11 @@ class SavesWhoeverIsShown:
         """Never asks for the floor: this seat is here for its potion."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Heal the prey the night shows her, if it shows her one."""
         if RoleActionName.HEAL in view.available_actions and view.victim_tonight is not None:
-            return RoleAction(action=RoleActionName.HEAL, target=view.victim_tonight)
-        return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+            return Turn(intent=RoleAction(action=RoleActionName.HEAL, target=view.victim_tonight))
+        return Turn(intent=TakeTurn(vote=Vote()) if view.may_vote else Wait())
 
 
 class SplitsThenSettles:
@@ -315,18 +317,22 @@ class SplitsThenSettles:
         """Say nothing: the pack's channel is not what this test is about."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Split the budget evenly, then name one prey when asked a second time."""
         if IntentKind.SHARE_PRIORITY not in view.allowed_intents or not view.action_targets:
-            return TakeTurn(vote=Vote()) if view.may_vote else Wait()
+            return Turn(intent=TakeTurn(vote=Vote()) if view.may_vote else Wait())
 
         prey = view.action_targets
         if self._has_split:
-            return SharePriority(allocations=(PriorityPoint(target=prey[0], points=100),))
+            return Turn(
+                intent=SharePriority(allocations=(PriorityPoint(target=prey[0], points=100),))
+            )
 
         self._has_split = True
-        return SharePriority(
-            allocations=tuple(PriorityPoint(target=one, points=50) for one in prey[:2])
+        return Turn(
+            intent=SharePriority(
+                allocations=tuple(PriorityPoint(target=one, points=50) for one in prey[:2])
+            )
         )
 
 

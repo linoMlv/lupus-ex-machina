@@ -26,6 +26,7 @@ from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.rules import GameRules
 from lupus_ex_machina.engine.runner import play_game
 from lupus_ex_machina.engine.setup import create_game
+from lupus_ex_machina.engine.turn import Turn
 from lupus_ex_machina.engine.views import PlayerView
 
 
@@ -47,11 +48,11 @@ class AwaitedAgent:
         self.answers += 1
         return Bid(urgency=100, intention="Accuser.")
 
-    async def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Turn:
         """Play the first legal move on offer, after suspending."""
         await asyncio.sleep(0)
         self.answers += 1
-        return self._move(view)
+        return Turn(intent=self._move(view))
 
     @staticmethod
     def _move(view: PlayerView) -> Intent:

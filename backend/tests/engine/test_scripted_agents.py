@@ -43,7 +43,7 @@ def agents() -> list[Agent]:
 async def test_agents_only_ever_produce_legal_intents(agent: Agent) -> None:
     for state in every_phase_of_a_game():
         for player in state.living:
-            intent = await agent.decide(project(state, player.id))
+            intent = (await agent.decide(project(state, player.id))).intent
 
             validate_intent(state, player.id, intent)
 
@@ -54,7 +54,7 @@ async def test_agents_stay_silent_once_they_have_voted(agent: Agent) -> None:
     voter = state.living[0].id
     state = state.with_ballot_from(voter, state.living[1].id)
 
-    assert await agent.decide(project(state, voter)) == Wait()
+    assert (await agent.decide(project(state, voter))).intent == Wait()
 
 
 async def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
@@ -62,7 +62,7 @@ async def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
 
     for state in every_phase_of_a_game():
         for player in state.living:
-            intent = await agent.decide(project(state, player.id))
+            intent = (await agent.decide(project(state, player.id))).intent
 
             assert intent.kind in {IntentKind.WAIT, IntentKind.TAKE_TURN}
             if isinstance(intent, TakeTurn):
@@ -75,7 +75,7 @@ async def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     accuser = state.living[0].id
 
-    intent = await AlwaysAccuseAgent().decide(project(state, accuser))
+    intent = (await AlwaysAccuseAgent().decide(project(state, accuser))).intent
 
     assert isinstance(intent, TakeTurn)
     assert intent.vote is not None
@@ -87,7 +87,7 @@ async def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() 
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=1)
     accuser = state.living[0].id
 
-    intent = await AlwaysAccuseAgent().decide(project(state, accuser))
+    intent = (await AlwaysAccuseAgent().decide(project(state, accuser))).intent
 
     assert isinstance(intent, TakeTurn)
     assert intent.vote is not None
@@ -102,7 +102,8 @@ async def lines_of(state: GameState, speaker: PlayerId, seeds: range = range(30)
     would break on any change to the order of its choices.
     """
     turns = [
-        await RandomAgent(rng=create_rng(seed)).decide(project(state, speaker)) for seed in seeds
+        (await RandomAgent(rng=create_rng(seed)).decide(project(state, speaker))).intent
+        for seed in seeds
     ]
     return [turn.speech for turn in turns if isinstance(turn, TakeTurn) and turn.speech is not None]
 
@@ -141,8 +142,8 @@ async def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     view = project(state, state.living[0].id)
 
-    first = [await RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
-    second = [await RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
+    first = [(await RandomAgent(rng=create_rng(5)).decide(view)).intent for _ in range(10)]
+    second = [(await RandomAgent(rng=create_rng(5)).decide(view)).intent for _ in range(10)]
 
     assert first == second
 
@@ -152,6 +153,6 @@ async def test_the_random_agent_does_not_always_answer_the_same_thing() -> None:
     view = project(state, state.living[0].id)
     agent = RandomAgent(rng=create_rng(5))
 
-    answers = {(await agent.decide(view)).kind for _ in range(30)}
+    answers = {((await agent.decide(view)).intent).kind for _ in range(30)}
 
     assert len(answers) > 1
