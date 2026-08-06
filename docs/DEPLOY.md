@@ -20,7 +20,7 @@ un GLB n'est pas servi avec le type MIME `model/gltf-binary`.
 
 ## 2. Variables d'environnement
 
-Toutes les variables sont préfixées par `LUPUS_` et **toutes sont optionnelles** : l'image fixe déjà
+Toutes les variables sont préfixées par `LUPUS_`. Toutes ont un défaut utilisable — à une exception près, `LUPUS_LLM_API_KEY`, sans laquelle une partie ne peut pas être jouée par des modèles. L'image fixe déjà
 les valeurs nécessaires à son propre agencement. Le modèle complet est dans
 [`.env.example`](../.env.example).
 
@@ -31,6 +31,8 @@ les valeurs nécessaires à son propre agencement. Le modèle complet est dans
 | `LUPUS_LOG_LEVEL` | `info` | `critical`, `error`, `warning`, `info`, `debug` ou `trace`. |
 | `LUPUS_FRONTEND_DIST` | `/app/frontend/dist` | Interface compilée. Si le chemin est absent, l'API démarre quand même mais **ne sert plus l'interface**. |
 | `LUPUS_MODELS_DIR` | `/app/assets` | Modèles GLB exposés sous `/models`. |
+| `LUPUS_LLM_API_KEY` | *(vide)* | Clé du fournisseur compatible OpenAI. **Le seul secret du projet** : à définir dans la plateforme, jamais dans l'image ni dans le dépôt. Sans elle, aucune partie ne peut être jouée par des modèles. |
+| `LUPUS_LLM_BASE_URL` | `https://api.mistral.ai/v1` | Endpoint du fournisseur. Mistral est consommé par son API compatible OpenAI ; tout endpoint compatible convient. |
 
 > **Aucun secret n'est nécessaire à ce stade.** Les clés d'API des modèles de langage seront
 > introduites au jalon J7, et devront être fournies **comme variables d'exécution** — jamais comme

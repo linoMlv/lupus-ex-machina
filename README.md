@@ -176,7 +176,7 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   Aucune valeur de jeu ne reste écrite dans le code — un test balaie le moteur pour s'en assurer — et
   une configuration se sauvegarde, se recharge et se partage.
 
-La couche LLM et les agents (jalon 7) sont la prochaine étape.
+La couche LLM et les agents (jalon 7) sont **en cours** : une partie complète se joue déjà avec de vrais modèles en console, il reste le budget de contexte à écrire.
 
 ---
 
