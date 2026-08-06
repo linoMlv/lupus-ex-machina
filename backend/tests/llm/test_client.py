@@ -151,3 +151,19 @@ async def test_an_answer_that_never_fits_the_schema_gives_up_cleanly() -> None:
             messages=(Message(role=Role.USER, content="Veux-tu parler ?"),),
             schema=Answer,
         )
+
+
+async def test_a_client_counts_what_a_game_costs_in_calls_and_in_seconds() -> None:
+    """The budget of a game is an acceptance criterion, not a curiosity (GL-7, J7.5.3)."""
+    client = client_of(answering({"urgency": 10, "intention": "Oui."}))
+
+    for _ in range(3):
+        await client.complete(
+            model="ministral-3b-latest",
+            messages=(Message(role=Role.USER, content="Veux-tu parler ?"),),
+            schema=Answer,
+        )
+
+    assert len(client.asked) == 3
+    assert client.seconds_spent >= 0.0
+    assert [asked.model for asked in client.asked] == ["ministral-3b-latest"] * 3

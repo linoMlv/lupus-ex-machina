@@ -74,6 +74,21 @@ class LlmAgent:
         self._temperature = temperature
         self._top_p = top_p
 
+    @property
+    def personality(self) -> Temperament:
+        """How this seat plays. Read by the spectator, when the option allows it (D-064)."""
+        return self._personality
+
+    @property
+    def generation_model(self) -> str:
+        """The model this seat thinks and speaks with (D-077)."""
+        return self._generation_model
+
+    @property
+    def bidding_model(self) -> str:
+        """The model this seat bids for the floor with (D-077)."""
+        return self._bidding_model
+
     async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Say how badly this seat wants the floor (D-002).
 

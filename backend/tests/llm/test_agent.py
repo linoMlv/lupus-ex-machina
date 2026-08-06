@@ -279,3 +279,10 @@ async def test_a_note_a_model_strikes_out_survives_the_trimming_untouched() -> N
     turn = await seated(provider).decide(project(state, state.players[0].id), ())
 
     assert turn.notebook == (DropNote(entry=2),)
+
+
+def test_a_seat_says_which_model_it_bids_with() -> None:
+    """Read by the console command, and by the spectator later (D-077)."""
+    agent = seated(FakeCompletions())
+
+    assert agent.bidding_model == "ministral-3b-latest"

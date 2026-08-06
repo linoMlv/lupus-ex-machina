@@ -25,7 +25,11 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="LUPUS_",
-        env_file=".env",
+        # The repository root first, then the working directory. Commands run
+        # from `backend/` (that is where the project lives) while the `.env`
+        # sits beside `.env.example` at the root, so looking only where the
+        # process happens to start would find nothing.
+        env_file=(REPOSITORY_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -43,4 +47,16 @@ class Settings(BaseSettings):
     models_dir: Path = Field(
         default=REPOSITORY_ROOT / "assets",
         description="Directory holding the GLB models exposed under /models.",
+    )
+    llm_api_key: str | None = Field(
+        default=None,
+        description="Key of the OpenAI-compatible provider. Without it, no game with models.",
+    )
+    """Never in the image, never in the repository: it is read from the
+    environment like everything else, and a game without it fails loudly rather
+    than silently playing itself (D-090)."""
+
+    llm_base_url: str = Field(
+        default="https://api.mistral.ai/v1",
+        description="Endpoint of the OpenAI-compatible provider.",
     )

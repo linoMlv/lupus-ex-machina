@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from lupus_ex_machina.config import Settings
+
 
 @pytest.fixture(autouse=True)
 def isolated_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -24,3 +26,6 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         if name.startswith("LUPUS_"):
             monkeypatch.delenv(name)
     monkeypatch.chdir(tmp_path)
+    # The settings also read a `.env` beside the repository, by absolute path:
+    # moving the working directory is no longer enough to be cut off from it.
+    monkeypatch.setitem(Settings.model_config, "env_file", tmp_path / ".env")

@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 lupus-ex-machina = "lupus_ex_machina.server:main"
 lupus-play = "lupus_ex_machina.play:main"
+lupus-play-llm = "lupus_ex_machina.play_llm:main"
 
 [dependency-groups]
 dev = [

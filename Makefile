@@ -68,6 +68,10 @@ run-frontend: ## Start the Vite dev server with hot reload
 play: ## Play one game in the console with scripted agents (SEED=1 PLAYERS=8)
 	$(UV) run lupus-play --seed $(SEED) --players $(PLAYERS)
 
+.PHONY: play-llm
+play-llm: ## Play one game with real models (needs LUPUS_LLM_API_KEY)
+	$(UV) run lupus-play-llm --seed $(SEED) --players $(PLAYERS) --forced-designation
+
 # --- Build -------------------------------------------------------------------
 
 build: build-frontend ## Build every deployable artefact

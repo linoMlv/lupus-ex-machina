@@ -16,6 +16,7 @@ models; everything around them is English (HR-6).
 
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
@@ -23,7 +24,7 @@ import httpx2
 from pydantic import ValidationError
 
 from lupus_ex_machina.llm.backoff import RetryPolicy
-from lupus_ex_machina.llm.completions import Answer
+from lupus_ex_machina.llm.completions import Answer, Asked
 from lupus_ex_machina.llm.errors import ModelAnswerError, ThrottledError
 from lupus_ex_machina.llm.messages import Message, Role
 
@@ -67,6 +68,8 @@ class ChatClient:
         )
         self._sleep = sleep
         self._retries = retries if retries is not None else RetryPolicy()
+        self.asked: list[Asked] = []
+        self.seconds_spent = 0.0
 
     async def complete(
         self,
@@ -82,7 +85,42 @@ class ChatClient:
         An answer that does not fit is put back to the model **with what was
         wrong with it**, once. Telling it is the whole point: a model asked
         again with the same prompt tends to answer the same thing.
+
+        Every request is counted, and the time it took with it: what a game
+        costs in calls and in seconds is an acceptance criterion of this jalon,
+        not something to find out afterwards (GL-7).
         """
+        self.asked.append(
+            Asked(
+                model=model,
+                messages=tuple(messages),
+                schema_name=schema.__name__,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        )
+        started = time.monotonic()
+        try:
+            return await self._answered(
+                model=model,
+                messages=messages,
+                schema=schema,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        finally:
+            self.seconds_spent += time.monotonic() - started
+
+    async def _answered(
+        self,
+        *,
+        model: str,
+        messages: Sequence[Message],
+        schema: type[Answer],
+        temperature: float,
+        top_p: float,
+    ) -> Answer:
+        """Ask, validate, and ask once more with the error when it does not fit."""
         conversation = list(messages)
         errors: list[str] = []
 

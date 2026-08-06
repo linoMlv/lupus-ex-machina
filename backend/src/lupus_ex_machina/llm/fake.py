@@ -13,9 +13,9 @@ built correctly (J7.2.6).
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ValidationError
 
-from lupus_ex_machina.llm.completions import Answer
+from lupus_ex_machina.llm.completions import Answer, Asked
 from lupus_ex_machina.llm.errors import ModelAnswerError
 from lupus_ex_machina.llm.messages import Message
 
@@ -26,18 +26,6 @@ Inventor = Callable[[type[BaseModel], Sequence[Message]], str]
 
 class NothingToAnswerError(RuntimeError):
     """The fake was asked something with no script left and no way to invent."""
-
-
-class Asked(BaseModel):
-    """One request the fake was handed, kept whole for a test to read."""
-
-    model_config = ConfigDict(frozen=True)
-
-    model: str
-    messages: tuple[Message, ...]
-    schema_name: str
-    temperature: float
-    top_p: float
 
 
 class FakeCompletions:
