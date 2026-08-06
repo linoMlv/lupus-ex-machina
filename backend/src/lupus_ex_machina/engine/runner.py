@@ -70,7 +70,7 @@ from lupus_ex_machina.engine.intents import (
     TakeTurn,
     Wait,
 )
-from lupus_ex_machina.engine.journal import Journal
+from lupus_ex_machina.engine.journal import Journal, project_journal
 from lupus_ex_machina.engine.night import (
     findings_of,
     night_callers,
@@ -95,12 +95,16 @@ from lupus_ex_machina.engine.turn import (
 )
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.victory import Outcome, evaluate_victory
-from lupus_ex_machina.engine.views import project
+from lupus_ex_machina.engine.views import PlayerView, project
+from lupus_ex_machina.engine.visibility import Recipient
 
 # Generous on purpose: with eight players, a real game lasts a handful of rounds.
 DEFAULT_MAX_ROUNDS = 100
 
 Agents = Mapping[PlayerId, Agent]
+
+# What an agent is handed of the record: its own facts, already filtered.
+Events = tuple[Event, ...]
 
 # What `resolve_day` and `resolve_night` both are: they close a phase, returning
 # the new state and whoever died, if anyone.
@@ -341,7 +345,10 @@ class _Run:
         """
         survivors = tuple(player.id for player in state.living)
         thoughts = await asyncio.gather(
-            *(self._agents[player].reflect(project(state, player)) for player in survivors)
+            *(
+                self._agents[player].reflect(*self._what_they_see(state, player))
+                for player in survivors
+            )
         )
         for player, thought in zip(survivors, thoughts, strict=True):
             self._write_down_what_was_thought(state, player, thought)
@@ -479,7 +486,7 @@ class _Run:
             if not state.has_voted(player.id) and player.id != just_spoke
         )
         bids = await asyncio.gather(
-            *(self._agents[bidder].bid(project(state, bidder)) for bidder in bidders)
+            *(self._agents[bidder].bid(*self._what_they_see(state, bidder)) for bidder in bidders)
         )
         return dict(zip(bidders, bids, strict=True))
 
@@ -693,6 +700,17 @@ class _Run:
 
     # --- Agents ----------------------------------------------------------
 
+    def _what_they_see(self, state: GameState, player: PlayerId) -> tuple[PlayerView, Events]:
+        """The two things an agent is ever handed: its view, and its own journal.
+
+        Both filtered here, at the source: an agent able to read the whole
+        journal would be one line away from every secret in the game (D-046).
+        """
+        return (
+            project(state, player),
+            project_journal(self._journal.events, Recipient.of(state.player(player))),
+        )
+
     async def _ask(self, state: GameState, player: PlayerId) -> Intent:
         """Ask a player for their turn, and write down what they made of it.
 
@@ -702,7 +720,7 @@ class _Run:
         the journal, and an agent writing its own facts would be writing into
         the source of truth (D-001).
         """
-        turn = await self._agents[player].decide(project(state, player))
+        turn = await self._agents[player].decide(*self._what_they_see(state, player))
         self._write_down_what_was_thought(state, player, turn)
         return turn.intent
 

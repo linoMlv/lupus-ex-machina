@@ -9,6 +9,8 @@ Everything here is exercised by scripted agents, without a model (GL-2): what a
 turn *contains* is J7.4's business, that it is collected at all is this one's.
 """
 
+from collections.abc import Sequence
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
@@ -16,6 +18,7 @@ from lupus_ex_machina.agents.scripted import AlwaysAccuseAgent, Scripted, Silent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import (
+    Event,
     IntentRejected,
     NotebookEntryRecorded,
     PrivateReasoningRecorded,
@@ -64,13 +67,13 @@ class ThinkingAgent(Scripted):
         """Take the moves of a scripted agent, and think out loud on top."""
         self._moves = AlwaysAccuseAgent()
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid like the agent whose moves it plays."""
-        return await self._moves.bid(view)
+        return await self._moves.bid(view, journal)
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Hand back the same move, with an analysis and a note attached."""
-        move = await self._moves.decide(view)
+        move = await self._moves.decide(view, journal)
         return move.model_copy(
             update={
                 "reasoning": ANALYSIS,
@@ -214,13 +217,13 @@ class ScribblingAgent(Scripted):
         self._turns = 0
         self._moves = SilentAgent()
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid like the agent whose moves it plays."""
-        return await self._moves.bid(view)
+        return await self._moves.bid(view, journal)
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Write one operation per turn, in the order add, revise, drop."""
-        move = await self._moves.decide(view)
+        move = await self._moves.decide(view, journal)
         self._turns += 1
         return move.model_copy(update={"notebook": self._writes()})
 
@@ -281,13 +284,13 @@ class OverwritesEverything(Scripted):
         self._writes = writes
         self._moves = SilentAgent()
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid like the agent whose moves it plays."""
-        return await self._moves.bid(view)
+        return await self._moves.bid(view, journal)
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Play a harmless move, and try every operation it was given."""
-        move = await self._moves.decide(view)
+        move = await self._moves.decide(view, journal)
         written, self._writes = self._writes, ()
         return move.model_copy(update={"notebook": written})
 
@@ -359,7 +362,7 @@ CLOSING_THOUGHT = "Le dépouillement change tout ce que je croyais."
 class ThinksAgainAtTheClose(ThinkingAgent):
     """Thinks on its turn like any agent, and once more when the round closes."""
 
-    async def reflect(self, view: PlayerView) -> Reflection:
+    async def reflect(self, view: PlayerView, journal: Sequence[Event]) -> Reflection:
         """Take stock of what the count and the resolution just taught."""
         return Reflection(reasoning=CLOSING_THOUGHT)
 

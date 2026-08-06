@@ -6,12 +6,15 @@ is looked at, and the reason the night settles everything in one go. If the
 engine disagrees with them, the engine is wrong.
 """
 
+from collections.abc import Sequence
+
 import pytest
 
 from lupus_ex_machina.agents.scripted import RandomAgent, Scripted, SilentAgent
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import (
+    Event,
     NightPowerUsed,
     PriorityShared,
     RunoffOpened,
@@ -46,11 +49,11 @@ from lupus_ex_machina.engine.views import PlayerView
 class HuntsFirst(Scripted):
     """A wolf that always puts its whole budget on the lowest-seated prey."""
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Weigh the first prey, otherwise stay out of the way."""
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.action_targets:
             return Turn(
@@ -72,11 +75,11 @@ class AimsAt(Scripted):
         """Take the player this agent will shoot when it gets the chance."""
         self._target = target
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Shoot the named player, otherwise vote blank or wait."""
         if RoleActionName.SHOOT in view.available_actions and self._target in view.action_targets:
             return Turn(intent=RoleAction(action=RoleActionName.SHOOT, target=self._target))
@@ -291,11 +294,11 @@ async def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() ->
 class SavesWhoeverIsShown(Scripted):
     """A witch who pours her potion of life on the victim she is shown (D-029)."""
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Never asks for the floor: this seat is here for its potion."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Heal the prey the night shows her, if it shows her one."""
         if RoleActionName.HEAL in view.available_actions and view.victim_tonight is not None:
             return Turn(intent=RoleAction(action=RoleActionName.HEAL, target=view.victim_tonight))
@@ -313,11 +316,11 @@ class SplitsThenSettles(Scripted):
         """Start before the first round of the pack's vote."""
         self._has_split = False
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Say nothing: the pack's channel is not what this test is about."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Split the budget evenly, then name one prey when asked a second time."""
         if IntentKind.SHARE_PRIORITY not in view.allowed_intents or not view.action_targets:
             return Turn(intent=TakeTurn(vote=Vote()) if view.may_vote else Wait())

@@ -18,7 +18,10 @@ thoughts to take stock with, and one that returned an empty one would still be
 saying something. :class:`Scripted` gives them all the same silence.
 """
 
+from collections.abc import Sequence
+
 from lupus_ex_machina.engine.bidding import Bid
+from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
@@ -44,7 +47,7 @@ class Scripted:
     agent keeps the four of them about what they actually differ on.
     """
 
-    async def reflect(self, view: PlayerView) -> Reflection:
+    async def reflect(self, view: PlayerView, journal: Sequence[Event]) -> Reflection:
         """Say nothing, which is what a scripted agent has to say."""
         return Reflection()
 
@@ -55,11 +58,11 @@ class SilentAgent(Scripted):
     Useful as a floor: a game where everyone stays silent must still terminate.
     """
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Want the floor as little as the scale allows."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Wait, unless a vote is possible — then vote blank."""
         return Turn(intent=self._move(view))
 
@@ -77,11 +80,11 @@ class AlwaysAccuseAgent(Scripted):
     which exercises eliminations and the end conditions.
     """
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Want the floor as much as the scale allows."""
         return Bid(urgency=100, intention="Accuser.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Put everything on the first prey, or vote against the first target."""
         return Turn(intent=self._move(view))
 
@@ -108,11 +111,11 @@ class RogueAgent(Scripted):
     only way a test about them can be sure it is testing anything at all.
     """
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid like anyone else — what it does with the floor is the point."""
         return Bid(urgency=50, intention="Agir.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Play an intent the rules refuse: the pack never designates one by one."""
         prey = view.living_others[0] if view.living_others else view.self_id
         return Turn(intent=RoleAction(action=RoleActionName.DEVOUR, target=prey))
@@ -129,11 +132,11 @@ class RandomAgent(Scripted):
         """Take the generator every draw of this agent goes through."""
         self._rng = rng
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Want the floor to a degree drawn at random, like everything else."""
         return Bid(urgency=self._rng.randint(0, 100), intention="Peut-être parler.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Pick a legal move at random."""
         return Turn(intent=self._move(view))
 

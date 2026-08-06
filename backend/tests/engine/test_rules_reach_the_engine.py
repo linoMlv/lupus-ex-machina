@@ -11,6 +11,8 @@ argument ``runoff_targets`` is in the state for — a view derived from the stat
 alone cannot be told about a restriction only the caller knew.
 """
 
+from collections.abc import Sequence
+
 import pytest
 
 from lupus_ex_machina.agents.scripted import RandomAgent, Scripted
@@ -18,6 +20,7 @@ from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid, elect
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.events import (
+    Event,
     ForcedVoteReason,
     RoleRevealed,
     SpeechDelivered,
@@ -277,10 +280,10 @@ async def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
 class _NeverVotes(Scripted):
     """A player who always wants the floor and never closes the round."""
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         return Bid(urgency=100, intention="J'ai encore quelque chose à dire.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         return Turn(intent=TakeTurn(speech="Je parle.") if view.may_speak else Wait())
 
 

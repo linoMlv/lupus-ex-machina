@@ -5,6 +5,7 @@ states and terminations that regress, for almost no runtime cost.
 """
 
 import itertools
+from collections.abc import Sequence
 
 import pytest
 
@@ -288,15 +289,15 @@ class TooEagerOnNightZeroAgent(Scripted):
         """Take the generator the sane half of this agent draws from."""
         self._sane = RandomAgent(rng=rng)
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Speak out of turn on Night 0, then play normally."""
         if view.phase is Phase.NIGHT_ZERO:
             return Turn(intent=TakeTurn(speech="Je prends la parole trop tôt."))
-        return await self._sane.decide(view)
+        return await self._sane.decide(view, journal)
 
 
 async def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
@@ -320,11 +321,11 @@ async def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
 class NeverVotesAgent(Scripted):
     """Waits forever: legal (D-048), and a way to stall a round."""
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Never do anything."""
         return Turn(intent=Wait())
 
@@ -346,10 +347,10 @@ async def test_the_engine_refuses_to_loop_forever() -> None:
     """The round budget is a safety net, not a rule: exceeding it is a bug."""
 
     class ImmortalAgent(Scripted):
-        async def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
             return Bid(urgency=50, intention="Voter.")
 
-        async def decide(self, view: PlayerView) -> Turn:
+        async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
             return Turn(intent=TakeTurn(vote=Vote()))  # nobody ever dies
 
     state = create_game(six_seats(), rng=create_rng(11))
@@ -370,11 +371,11 @@ class TakesOneTurn(Scripted):
         self._turn = turn
         self._played = False
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Play the turn once, if the rules are offering it."""
         if self._played or not (view.may_speak or view.may_vote):
             return Turn(intent=Wait())
@@ -452,11 +453,11 @@ class Insistent(Scripted):
         """Take how badly this seat wants to speak."""
         self._urgency = urgency
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Always bid the same, so a test can reason about the order."""
         return Bid(urgency=self._urgency, intention="Parler.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Speak while the floor is open, then vote blank to close the round."""
         if view.may_speak:
             return Turn(intent=TakeTurn(speech="Je prends la parole."))
@@ -575,10 +576,10 @@ async def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
     """The budget of turns is the other way out, and it says so in the journal."""
 
     class TalksForever(Scripted):
-        async def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Turn:
+        async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
             return Turn(intent=TakeTurn(speech="Je continue.") if view.may_speak else Wait())
 
     events = await a_day_played_by(a_table_of(TalksForever))
@@ -618,10 +619,10 @@ def test_the_moderator_leaves_the_debate_alone_by_default() -> None:
 
 async def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
     class TalksForever(Scripted):
-        async def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Turn:
+        async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
             return Turn(intent=TakeTurn(speech="Je continue.") if view.may_speak else Wait())
 
     events = await a_day_played_by(a_table_of(TalksForever), control=DebateControl(turns_left=1))
@@ -642,10 +643,10 @@ async def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
     class SpeaksThenCallsTime(Scripted):
         """Speaks once, and cuts the debate short as it does — as the user would."""
 
-        async def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        async def decide(self, view: PlayerView) -> Turn:
+        async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
             if not view.may_speak:
                 return Turn(intent=Wait())
             control.cut_to(0)
@@ -667,11 +668,11 @@ class VotesFor(Scripted):
         """Take the player this seat always names."""
         self._target = target
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid low: this seat is here to vote, not to argue."""
         return Bid(urgency=10, intention="Voter.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Name that player when the rules still offer them, otherwise vote blank."""
         if not view.may_vote:
             return Turn(intent=Wait())
@@ -848,10 +849,10 @@ async def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
     class ClaimsWhileSpeaking(Scripted):
         """Presses the button in the middle of somebody else's turn."""
 
-        async def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
             return Bid(urgency=100, intention="Parler.")
 
-        async def decide(self, view: PlayerView) -> Turn:
+        async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
             claim.claim(quiet)
             return Turn(intent=TakeTurn(speech="Je finis ma phrase.") if view.may_speak else Wait())
 

@@ -7,10 +7,12 @@ the cheapest stand-in for the latency J7 is about to introduce.
 """
 
 import asyncio
+from collections.abc import Sequence
 
 from lupus_ex_machina.agents.scripted import Scripted
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.bidding import Bid
+from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.intents import (
     Intent,
     IntentKind,
@@ -43,13 +45,13 @@ class AwaitedAgent(Scripted):
         """Start with nothing asked of it yet."""
         self.answers = 0
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Want the floor, after letting the loop run something else."""
         await asyncio.sleep(0)
         self.answers += 1
         return Bid(urgency=100, intention="Accuser.")
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Play the first legal move on offer, after suspending."""
         await asyncio.sleep(0)
         self.answers += 1
@@ -98,10 +100,10 @@ class MeasuredAgent(AwaitedAgent):
         super().__init__()
         self._gauge = gauge
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Bid, through the gauge."""
         await self._gauge.measure()
-        return await super().bid(view)
+        return await super().bid(view, journal)
 
 
 async def test_the_bids_of_one_auction_are_asked_all_at_once() -> None:

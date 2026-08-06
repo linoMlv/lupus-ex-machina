@@ -38,6 +38,7 @@ ALLOWED: dict[str, str] = {
         "the technical net of D-078, which must never become a rule of the game"
     ),
     "runner.Agents": "a type alias",
+    "runner.Events": "a type alias",
     "runner.Resolver": "a type alias",
     "runner.Announcement": "a type alias",
     "rng.Rng": "a type alias",

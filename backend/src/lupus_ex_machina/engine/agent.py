@@ -10,11 +10,19 @@ model be plugged in later without weakening the rules.
 Both answers are awaited (D-087). A scripted agent has nothing to wait for and
 returns at once; a model answers over a network, and the whole table is asked
 for its bid in one go rather than one after another (GL-7).
+
+Every question comes with two things: the projected view, and the player's own
+**projected journal**. The view says what may be done, the journal says what has
+been seen — the transcript, and the notebook rebuilt from it (D-088). Both are
+already filtered, which is what makes them the only two sources a prompt is
+allowed (GL-3).
 """
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from lupus_ex_machina.engine.bidding import Bid
+from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.turn import Reflection, Turn
 from lupus_ex_machina.engine.views import PlayerView
 
@@ -23,7 +31,7 @@ from lupus_ex_machina.engine.views import PlayerView
 class Agent(Protocol):
     """Something able to play a seat."""
 
-    async def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView, journal: Sequence[Event]) -> Bid:
         """Return how badly this player wants the floor right now (D-002).
 
         Asked far more often than :meth:`decide` — once per player per turn at
@@ -32,7 +40,7 @@ class Agent(Protocol):
         """
         ...  # pragma: no cover - a Protocol body carries no behaviour
 
-    async def decide(self, view: PlayerView) -> Turn:
+    async def decide(self, view: PlayerView, journal: Sequence[Event]) -> Turn:
         """Return this player's whole turn: what they made of it, and what they do.
 
         The three parts come back together because they are one thought, and
@@ -40,7 +48,7 @@ class Agent(Protocol):
         """
         ...  # pragma: no cover - a Protocol body carries no behaviour
 
-    async def reflect(self, view: PlayerView) -> Reflection:
+    async def reflect(self, view: PlayerView, journal: Sequence[Event]) -> Reflection:
         """Return what this player makes of a round that has just closed (D-086).
 
         There is nothing to decide here: voting ended the floor for the round,
