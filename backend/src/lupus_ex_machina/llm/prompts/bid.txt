@@ -1,0 +1,9 @@
+$moment
+
+$last
+
+Veux-tu prendre la parole maintenant ?
+
+Réponds par une urgence de 0 à 100 et, en quelques mots, ce que tu dirais si on
+te la donnait. 0 si tu n'as rien à dire : le silence est une position, et les
+autres le remarqueront. 100 si te taire te coûterait la partie.

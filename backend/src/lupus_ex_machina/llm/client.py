@@ -17,17 +17,15 @@ models; everything around them is English (HR-6).
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Sequence
-from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any
 
 import httpx2
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from lupus_ex_machina.llm.backoff import RetryPolicy
-
-#: Answers are Pydantic models, and the client hands back the type it was asked
-#: for rather than a dictionary its caller would have to validate again.
-Answer = TypeVar("Answer", bound=BaseModel)
+from lupus_ex_machina.llm.completions import Answer
+from lupus_ex_machina.llm.errors import ModelAnswerError, ThrottledError
+from lupus_ex_machina.llm.messages import Message, Role
 
 #: Asked once more, and only once: a model that will not comply on the second
 #: attempt costs a turn, not a game. Any higher and a badly written prompt would
@@ -40,31 +38,6 @@ TOO_MANY_REQUESTS = 429
 
 #: How the client waits. Injected so the suite never actually sleeps.
 Sleep = Callable[[float], Awaitable[None]]
-
-
-class Role(StrEnum):
-    """Who a message in a conversation comes from."""
-
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class Message(BaseModel):
-    """One message of the conversation handed to a model."""
-
-    model_config = ConfigDict(frozen=True)
-
-    role: Role
-    content: str
-
-
-class ModelAnswerError(RuntimeError):
-    """A model never produced an answer of the shape it was asked for."""
-
-
-class ThrottledError(RuntimeError):
-    """A provider kept refusing for rate reasons until the attempts ran out."""
 
 
 class ChatClient:

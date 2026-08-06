@@ -13,7 +13,7 @@ J3 generalises this into the visibility model, where each fact carries its own
 audience (D-009). The boundary drawn here is the one that model will formalise.
 """
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from lupus_ex_machina.engine.errors import IllegalIntentError
 from lupus_ex_machina.engine.intents import (
@@ -52,6 +52,22 @@ class PublicPlayer(BaseModel):
     alive: bool
 
 
+class SpeechLimits(BaseModel):
+    """How many words a player may spend, and on what (D-021).
+
+    Part of the view because the view is the whole of what a model is told
+    (GL-3): limits read anywhere else would be the one thing in a prompt the
+    projection did not carry. The engine truncates regardless — a limit asked
+    for in a prompt is one a model overruns.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    speech_words: int = Field(ge=1)
+    analysis_words: int = Field(ge=1)
+    notebook_words: int = Field(ge=1)
+
+
 class PlayerView(BaseModel):
     """Everything one player knows about the game."""
 
@@ -81,6 +97,9 @@ class PlayerView(BaseModel):
     """Powers this player may use right now, empty when they have none."""
     priority_budget: int = 0
     """Points this player may spread over the prey tonight, zero when they may not."""
+    limits: SpeechLimits
+    """What this player may spend words on, and how many (D-021)."""
+
     victim_tonight: PlayerId | None = None
     """Whom the pack settled on, shown only to a player who may answer it (D-029).
 
@@ -131,6 +150,11 @@ def project(state: GameState, viewer: PlayerId) -> PlayerView:
         action_targets=_action_targets(state, viewer, actions, designating=designating),
         available_actions=actions,
         priority_budget=state.rules.night.priority_budget if designating else 0,
+        limits=SpeechLimits(
+            speech_words=state.rules.debate.speech_word_limit,
+            analysis_words=state.rules.debate.analysis_word_limit,
+            notebook_words=state.rules.debate.notebook_word_limit,
+        ),
         victim_tonight=_victim_shown_to(state, viewer, actions),
     )
 

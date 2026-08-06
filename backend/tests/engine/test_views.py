@@ -17,8 +17,10 @@ from lupus_ex_machina.engine.intents import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
+from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleActionName, RoleName
-from lupus_ex_machina.engine.rules import NightOptions
+from lupus_ex_machina.engine.rules import DebateOptions, GameRules, NightOptions
+from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 from lupus_ex_machina.engine.views import project
@@ -289,3 +291,20 @@ def test_a_witch_out_of_life_potions_is_told_nothing() -> None:
     )
 
     assert project(state, OTHER_WOLF).victim_tonight is None
+
+
+def test_the_view_carries_the_word_limits_the_player_is_held_to() -> None:
+    """What a model is told it may write has to come from the view (D-021, GL-3).
+
+    The limits are a rule of the game like any other (`debate`), and the prompt
+    is built from the projection alone: read anywhere else, they would be the
+    one thing in a prompt the view did not carry.
+    """
+    rules = GameRules(
+        debate=DebateOptions(speech_word_limit=12, analysis_word_limit=8, notebook_word_limit=4)
+    )
+    state = create_game(rules, rng=create_rng(3))
+
+    limits = project(state, state.players[0].id).limits
+
+    assert (limits.speech_words, limits.analysis_words, limits.notebook_words) == (12, 8, 4)

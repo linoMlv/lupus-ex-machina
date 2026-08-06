@@ -12,7 +12,9 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.llm.backoff import RetryPolicy
-from lupus_ex_machina.llm.client import ChatClient, Message, Role, ThrottledError
+from lupus_ex_machina.llm.client import ChatClient
+from lupus_ex_machina.llm.errors import ThrottledError
+from lupus_ex_machina.llm.messages import Message, Role
 
 BASE_URL = "https://api.example.test/v1"
 

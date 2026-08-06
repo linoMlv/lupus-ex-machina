@@ -1,0 +1,24 @@
+$moment
+
+# À la table
+
+$table
+
+# Ton carnet
+
+$notebook
+
+# Ce qui s'est dit
+
+$transcript
+
+# Ce que tu peux faire
+
+$moves
+
+Analyse d'abord la situation pour toi seul, mets ton carnet à jour si tu as
+appris quelque chose, puis décide.
+
+Ton analyse : $analysis_words mots au maximum.
+Une note de carnet : $notebook_words mots au maximum.
+Ta parole, si tu parles : $speech_words mots au maximum.

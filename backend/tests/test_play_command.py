@@ -7,7 +7,8 @@ agents, no model and no server.
 import pytest
 
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.play import ROLE_LABELS, main
+from lupus_ex_machina.labels import ROLE_LABELS
+from lupus_ex_machina.play import main
 
 
 def test_a_game_is_played_and_reported(capsys: pytest.CaptureFixture[str]) -> None:

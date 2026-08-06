@@ -1,0 +1,47 @@
+# The sentences a prompt is assembled from, and the only place they live.
+#
+# Templates rather than prose in the code (J7.2.1): every one of these will be
+# rewritten while the game is being calibrated, and rewriting them must never
+# mean touching a Python file. `$name` is filled in by `prompting.py`.
+#
+# French throughout, because every line here is read by a model (HR-6).
+
+[moment]
+now = "Nous sommes $phase, tour $day."
+
+[role]
+without_power = """
+Tu es $role. Tu n'as aucun pouvoir : ta seule arme est ce que tu déduis, et ce \
+que tu arrives à faire croire."""
+with_powers = "Tu es $role. Tu peux : $powers."
+
+[knowledge]
+alone = """
+Tu ne sais ce que personne d'autre est. Tout ce que tu apprendras viendra de ce \
+qui se dit, de qui vote contre qui, et de qui meurt."""
+pack = """
+Tu connais ta meute : $allies. Vous ne vous parlez pas la nuit — vous désignez \
+votre proie en silence, chacun répartissant ses points."""
+
+[transcript]
+nothing_yet = "Rien pour l'instant."
+nobody_spoke = "Personne n'a encore parlé."
+last_word = """
+Ce qui vient d'être dit :
+$block"""
+
+[moves]
+nothing = "Rien, cette fois. Tu peux seulement observer et réfléchir."
+speaking = """
+Prendre la parole. Tu peux t'adresser à quelqu'un en particulier, et accuser \
+quelqu'un — dis-le dans les champs prévus, ce n'est pas déduit de ta phrase."""
+blank_vote_only = "Voter blanc. C'est le seul vote possible aujourd'hui."
+voting = """
+Voter contre l'un de : $targets — ou voter blanc. Voter met fin à ta parole \
+pour la journée."""
+designating = """
+Répartir $budget points entre les proies pour peser sur la désignation de la \
+meute : $targets. Les points négatifs écartent une proie et coûtent autant que \
+les positifs. Les autres loups ne voient pas ta répartition."""
+power = "Utiliser ton pouvoir : $powers. Cibles possibles : $targets.$victim"
+victim = " La meute a désigné $victim."

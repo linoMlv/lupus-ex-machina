@@ -12,7 +12,9 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from lupus_ex_machina.llm.client import ChatClient, Message, ModelAnswerError, Role
+from lupus_ex_machina.llm.client import ChatClient
+from lupus_ex_machina.llm.errors import ModelAnswerError
+from lupus_ex_machina.llm.messages import Message, Role
 
 BASE_URL = "https://api.example.test/v1"
 API_KEY = "clef-de-test"
