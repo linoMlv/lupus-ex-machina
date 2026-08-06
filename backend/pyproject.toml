@@ -22,6 +22,7 @@ dev = [
     "httpx2>=2.9.1",
     "mypy>=1.18.0",
     "pytest>=9.0.0",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.0",
 ]
@@ -39,6 +40,11 @@ packages = ["src/lupus_ex_machina"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 filterwarnings = ["error"]
+# The engine is asynchronous (D-087), so most of the suite is too. Auto mode
+# spares every one of those tests a marker that would say nothing the `async def`
+# does not already say.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = [
     "--strict-markers",
     "--strict-config",

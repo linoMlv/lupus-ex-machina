@@ -147,12 +147,12 @@ def test_only_what_the_seer_did_becomes_a_finding() -> None:
 # --- What the table hears (J4.4.3) -------------------------------------------
 
 
-def played(rules: GameRules) -> GameResult:
+async def played(rules: GameRules) -> GameResult:
     """A game where the seat holding the seer always looks at someone."""
     rng = create_rng(4)
     state = create_game(rules.model_copy(update={"table": TableOptions(seed=4)}), rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal())
+    return await play_game(state, agents, journal=Journal())
 
 
 def facts_of[FactT: Fact](result: GameResult, kind: type[FactT]) -> list[FactT]:
@@ -171,21 +171,21 @@ def test_the_announcement_can_carry_no_name_at_all() -> None:
     assert set(announced.model_dump()) == {"kind", "revelation"}
 
 
-def test_a_speaking_seer_tells_the_table_what_she_found() -> None:
-    result = played(SPEAKING)
+async def test_a_speaking_seer_tells_the_table_what_she_found() -> None:
+    result = await played(SPEAKING)
 
     assert facts_of(result, SeerFindingAnnounced)
 
 
-def test_a_silent_seer_tells_the_table_nothing() -> None:
-    result = played(EXACT)
+async def test_a_silent_seer_tells_the_table_nothing() -> None:
+    result = await played(EXACT)
 
     assert facts_of(result, SeerInspected), "she still looked"
     assert facts_of(result, SeerFindingAnnounced) == []
 
 
-def test_every_announcement_matches_a_finding_she_actually_made() -> None:
-    result = played(SPEAKING)
+async def test_every_announcement_matches_a_finding_she_actually_made() -> None:
+    result = await played(SPEAKING)
 
     announced = [fact.revelation for fact in facts_of(result, SeerFindingAnnounced)]
     found = [fact.revelation for fact in facts_of(result, SeerInspected)]

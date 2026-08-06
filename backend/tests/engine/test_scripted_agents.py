@@ -40,29 +40,29 @@ def agents() -> list[Agent]:
 
 
 @pytest.mark.parametrize("agent", agents(), ids=lambda agent: type(agent).__name__)
-def test_agents_only_ever_produce_legal_intents(agent: Agent) -> None:
+async def test_agents_only_ever_produce_legal_intents(agent: Agent) -> None:
     for state in every_phase_of_a_game():
         for player in state.living:
-            intent = agent.decide(project(state, player.id))
+            intent = await agent.decide(project(state, player.id))
 
             validate_intent(state, player.id, intent)
 
 
 @pytest.mark.parametrize("agent", agents(), ids=lambda agent: type(agent).__name__)
-def test_agents_stay_silent_once_they_have_voted(agent: Agent) -> None:
+async def test_agents_stay_silent_once_they_have_voted(agent: Agent) -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     voter = state.living[0].id
     state = state.with_ballot_from(voter, state.living[1].id)
 
-    assert agent.decide(project(state, voter)) == Wait()
+    assert await agent.decide(project(state, voter)) == Wait()
 
 
-def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
+async def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
     agent = SilentAgent()
 
     for state in every_phase_of_a_game():
         for player in state.living:
-            intent = agent.decide(project(state, player.id))
+            intent = await agent.decide(project(state, player.id))
 
             assert intent.kind in {IntentKind.WAIT, IntentKind.TAKE_TURN}
             if isinstance(intent, TakeTurn):
@@ -71,11 +71,11 @@ def test_the_silent_agent_never_speaks_nor_names_anyone() -> None:
                 assert intent.vote.is_blank, "and never names anyone"
 
 
-def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
+async def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     accuser = state.living[0].id
 
-    intent = AlwaysAccuseAgent().decide(project(state, accuser))
+    intent = await AlwaysAccuseAgent().decide(project(state, accuser))
 
     assert isinstance(intent, TakeTurn)
     assert intent.vote is not None
@@ -83,35 +83,37 @@ def test_the_accusing_agent_names_someone_as_soon_as_it_may() -> None:
     assert intent.vote.target != accuser
 
 
-def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() -> None:
+async def test_the_accusing_agent_falls_back_to_a_blank_vote_on_the_first_day() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=1)
     accuser = state.living[0].id
 
-    intent = AlwaysAccuseAgent().decide(project(state, accuser))
+    intent = await AlwaysAccuseAgent().decide(project(state, accuser))
 
     assert isinstance(intent, TakeTurn)
     assert intent.vote is not None
     assert intent.vote.is_blank
 
 
-def lines_of(state: GameState, speaker: PlayerId, seeds: range = range(30)) -> list[str]:
+async def lines_of(state: GameState, speaker: PlayerId, seeds: range = range(30)) -> list[str]:
     """Every line one seat produces over a run of seeds.
 
     Swept rather than pinned to one seed: what a turn does is now drawn in
     several steps (D-028), so a single draw says nothing about the agent and
     would break on any change to the order of its choices.
     """
-    turns = [RandomAgent(rng=create_rng(seed)).decide(project(state, speaker)) for seed in seeds]
+    turns = [
+        await RandomAgent(rng=create_rng(seed)).decide(project(state, speaker)) for seed in seeds
+    ]
     return [turn.speech for turn in turns if isinstance(turn, TakeTurn) and turn.speech is not None]
 
 
-def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
+async def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
     """Degenerate but reachable: speech must never depend on someone else existing."""
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     lonely = state.living[0].id
     state = state.with_players_killed(player.id for player in state.living[1:])
 
-    lines = lines_of(state, lonely)
+    lines = await lines_of(state, lonely)
 
     assert lines, "it still finds something to say"
     for line in lines:
@@ -120,13 +122,13 @@ def test_the_random_agent_speaks_even_with_nobody_left_to_suspect() -> None:
         )
 
 
-def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() -> None:
+async def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() -> None:
     """A line joins the shared transcript: it is read on screen, and by the models (J7)."""
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     speaker = state.living[0]
     others = [other for other in state.players if other.id != speaker.id]
 
-    lines = lines_of(state, speaker.id)
+    lines = await lines_of(state, speaker.id)
 
     assert any(other.name in line for line in lines for other in others), "somebody gets named"
     for line in lines:
@@ -135,21 +137,21 @@ def test_the_random_agent_names_a_player_by_their_name_not_their_identifier() ->
         )
 
 
-def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:
+async def test_the_random_agent_is_reproducible_for_a_given_seed() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     view = project(state, state.living[0].id)
 
-    first = [RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
-    second = [RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
+    first = [await RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
+    second = [await RandomAgent(rng=create_rng(5)).decide(view) for _ in range(10)]
 
     assert first == second
 
 
-def test_the_random_agent_does_not_always_answer_the_same_thing() -> None:
+async def test_the_random_agent_does_not_always_answer_the_same_thing() -> None:
     state = create_game(SIX_SEATS, rng=create_rng(3)).entering(Phase.DAY, day=2)
     view = project(state, state.living[0].id)
     agent = RandomAgent(rng=create_rng(5))
 
-    answers = {agent.decide(view).kind for _ in range(30)}
+    answers = {(await agent.decide(view)).kind for _ in range(30)}
 
     assert len(answers) > 1

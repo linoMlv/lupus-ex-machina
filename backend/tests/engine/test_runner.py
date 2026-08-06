@@ -80,12 +80,12 @@ def six_seats(rules: GameRules | None = None) -> GameRules:
     return seats(6, rules)
 
 
-def play(seed: int, *, player_count: int = 8) -> GameResult:
+async def play(seed: int, *, player_count: int = 8) -> GameResult:
     """Play one full game of random agents, everything derived from one seed."""
     rng = create_rng(seed)
     state = create_game(seats(player_count), rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents)
+    return await play_game(state, agents)
 
 
 def assert_properly_finished(result: GameResult) -> None:
@@ -104,25 +104,25 @@ def assert_properly_finished(result: GameResult) -> None:
 # --- A game runs to the end -------------------------------------------------
 
 
-def test_a_full_game_reaches_a_winner() -> None:
-    assert_properly_finished(play(seed=1))
+async def test_a_full_game_reaches_a_winner() -> None:
+    assert_properly_finished(await play(seed=1))
 
 
 @pytest.mark.parametrize("player_count", PLAYER_COUNTS)
-def test_every_supported_table_size_can_be_played(player_count: int) -> None:
-    assert_properly_finished(play(seed=2, player_count=player_count))
+async def test_every_supported_table_size_can_be_played(player_count: int) -> None:
+    assert_properly_finished(await play(seed=2, player_count=player_count))
 
 
-def test_a_hundred_games_of_different_seeds_all_terminate() -> None:
+async def test_a_hundred_games_of_different_seeds_all_terminate() -> None:
     """The regression net of J2.5.5: no seed may deadlock the engine."""
-    results = [play(seed=seed) for seed in range(100)]
+    results = [await play(seed=seed) for seed in range(100)]
 
     for result in results:
         assert_properly_finished(result)
     assert len({result.outcome for result in results}) == 2, "both sides must be able to win"
 
 
-def test_a_table_that_always_accuses_ends_quickly() -> None:
+async def test_a_table_that_always_accuses_ends_quickly() -> None:
     """Eight players, an elimination most rounds: the game cannot drag on.
 
     The bound is what makes the name true — without it the round budget of 100
@@ -131,13 +131,13 @@ def test_a_table_that_always_accuses_ends_quickly() -> None:
     state = create_game(rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: AlwaysAccuseAgent() for player in state.players}
 
-    result = play_game(state, agents)
+    result = await play_game(state, agents)
 
     assert_properly_finished(result)
     assert result.rounds <= 8
 
 
-def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None:
+async def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None:
     """A degenerate table, and a real property of the rules.
 
     If every player votes blank and the pack designates nobody, no rule kills
@@ -149,10 +149,10 @@ def test_a_table_where_nobody_ever_dies_is_stopped_by_the_round_budget() -> None
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
     with pytest.raises(GameDidNotEndError):
-        play_game(state, agents, max_rounds=10)
+        await play_game(state, agents, max_rounds=10)
 
 
-def test_the_same_table_ends_when_the_pack_is_made_to_designate_someone() -> None:
+async def test_the_same_table_ends_when_the_pack_is_made_to_designate_someone() -> None:
     """The way out of that deadlock the configuration offers (D-078, D-081).
 
     Same silent table, same seed: made to take someone every night, the pack
@@ -162,29 +162,29 @@ def test_the_same_table_ends_when_the_pack_is_made_to_designate_someone() -> Non
     state = create_game(FORCED, rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
-    result = play_game(state, agents, max_rounds=10, rng=rng)
+    result = await play_game(state, agents, max_rounds=10, rng=rng)
 
     assert_properly_finished(result)
     assert result.outcome is Outcome.WEREWOLVES_WIN
 
 
-def test_the_prey_the_lot_takes_depends_on_the_seed() -> None:
+async def test_the_prey_the_lot_takes_depends_on_the_seed() -> None:
     """What D-081 bought: the same deadlock no longer kills the same players.
 
     A pack settled by seat took the lowest one every time, in every game.
     """
-    victims = {_who_the_lot_took(seed) for seed in range(12)}
+    victims = {await _who_the_lot_took(seed) for seed in range(12)}
 
     assert len(victims) > 1
 
 
-def _who_the_lot_took(seed: int) -> tuple[PlayerId, ...]:
+async def _who_the_lot_took(seed: int) -> tuple[PlayerId, ...]:
     """Play the deadlocked table with one seed and report who the pack ate."""
     rng = create_rng(seed)
     state = create_game(FORCED, rng=create_rng(4))
     agents: dict[PlayerId, Agent] = {player.id: SilentAgent() for player in state.players}
 
-    result = play_game(state, agents, max_rounds=10, rng=rng)
+    result = await play_game(state, agents, max_rounds=10, rng=rng)
     return tuple(player.id for player in result.state.players if not player.alive)
 
 
@@ -207,14 +207,14 @@ def game_of(result: GameResult) -> tuple[object, ...]:
     )
 
 
-def test_two_games_with_the_same_seed_are_identical() -> None:
-    first, second = play(seed=7), play(seed=7)
+async def test_two_games_with_the_same_seed_are_identical() -> None:
+    first, second = await play(seed=7), await play(seed=7)
 
     assert game_of(first) == game_of(second)
 
 
-def test_different_seeds_produce_different_games() -> None:
-    lengths = {play(seed=seed).rounds for seed in range(20)}
+async def test_different_seeds_produce_different_games() -> None:
+    lengths = {(await play(seed=seed)).rounds for seed in range(20)}
 
     assert len(lengths) > 1
 
@@ -222,15 +222,15 @@ def test_different_seeds_produce_different_games() -> None:
 # --- Victory is evaluated once the resolution is complete -------------------
 
 
-def test_the_game_stops_as_soon_as_a_side_has_won() -> None:
-    result = play(seed=3)
+async def test_the_game_stops_as_soon_as_a_side_has_won() -> None:
+    result = await play(seed=3)
 
     assert evaluate_victory(result.state) is result.outcome
 
 
-def test_a_finished_game_always_leaves_a_survivor() -> None:
+async def test_a_finished_game_always_leaves_a_survivor() -> None:
     for seed in range(100):
-        result = play(seed=seed)
+        result = await play(seed=seed)
 
         assert result.state.living, f"seed {seed} wiped out the whole table"
 
@@ -261,7 +261,7 @@ def test_no_game_with_two_survivors_or_fewer_is_still_running(wolves: int, villa
 # --- Illegal intents --------------------------------------------------------
 
 
-def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
+async def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
     """The engine owns legality: a refused intent costs a turn, nothing else (D-001).
 
     One deranged player among sane ones — which is exactly what a misbehaving
@@ -274,7 +274,7 @@ def test_an_agent_playing_illegal_intents_cannot_break_a_game() -> None:
         for player in state.players
     }
 
-    result = play_game(state, agents)
+    result = await play_game(state, agents)
 
     assert_properly_finished(result)
     assert result.rejected_intents > 0
@@ -287,18 +287,18 @@ class TooEagerOnNightZeroAgent:
         """Take the generator the sane half of this agent draws from."""
         self._sane = RandomAgent(rng=rng)
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Speak out of turn on Night 0, then play normally."""
         if view.phase is Phase.NIGHT_ZERO:
             return TakeTurn(speech="Je prends la parole trop tôt.")
-        return self._sane.decide(view)
+        return await self._sane.decide(view)
 
 
-def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
+async def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
     """Night 0 collects an intent from everyone, so it must judge them too (D-032).
 
     Dropping the illegal ones silently would leave `rejected_intents` — which the
@@ -311,7 +311,7 @@ def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
         player.id: TooEagerOnNightZeroAgent(rng) for player in state.players
     }
 
-    result = play_game(state, agents)
+    result = await play_game(state, agents)
 
     assert result.rejected_intents >= len(state.players)
 
@@ -319,16 +319,16 @@ def test_an_illegal_intent_on_night_zero_is_counted_as_refused() -> None:
 class NeverVotesAgent:
     """Waits forever: legal (D-048), and a way to stall a round."""
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Never do anything."""
         return Wait()
 
 
-def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
+async def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
     """Waiting forever is legal, so the round needs its own way out (D-048, D-060)."""
     state = create_game(rng=create_rng(10))
     agents: dict[PlayerId, Agent] = {
@@ -336,26 +336,26 @@ def test_a_player_who_never_votes_does_not_stall_the_round() -> None:
         for player in state.players
     }
 
-    result = play_game(state, agents)
+    result = await play_game(state, agents)
 
     assert_properly_finished(result)
 
 
-def test_the_engine_refuses_to_loop_forever() -> None:
+async def test_the_engine_refuses_to_loop_forever() -> None:
     """The round budget is a safety net, not a rule: exceeding it is a bug."""
 
     class ImmortalAgent:
-        def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Voter.")
 
-        def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Intent:
             return TakeTurn(vote=Vote())  # nobody ever dies
 
     state = create_game(six_seats(), rng=create_rng(11))
     agents: dict[PlayerId, Agent] = {player.id: ImmortalAgent() for player in state.players}
 
     with pytest.raises(RuntimeError, match="did not end"):
-        play_game(state, agents, max_rounds=5)
+        await play_game(state, agents, max_rounds=5)
 
 
 # --- What each of the three turns actually does (J5.2.2) ---------------------
@@ -369,11 +369,11 @@ class TakesOneTurn:
         self._turn = turn
         self._played = False
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Play the turn once, if the rules are offering it."""
         if self._played or not (view.may_speak or view.may_vote):
             return Wait()
@@ -451,18 +451,18 @@ class Insistent:
         """Take how badly this seat wants to speak."""
         self._urgency = urgency
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Always bid the same, so a test can reason about the order."""
         return Bid(urgency=self._urgency, intention="Parler.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Speak while the floor is open, then vote blank to close the round."""
         if view.may_speak:
             return TakeTurn(speech="Je prends la parole.")
         return TakeTurn(vote=Vote()) if view.may_vote else Wait()
 
 
-def a_day_of(
+async def a_day_of(
     urgencies: dict[int, int], claim: "FloorClaim | None" = None
 ) -> tuple[GameState, tuple[Event, ...]]:
     """Play one debate day where each seat bids the urgency it was given.
@@ -477,7 +477,7 @@ def a_day_of(
     journal = Journal()
     run = _Run(agents, journal, create_rng(3), claim=claim)
 
-    run.play_day(run.enter(state, Phase.DAY, day=2))
+    await run.play_day(run.enter(state, Phase.DAY, day=2))
     return state, journal.events
 
 
@@ -489,20 +489,20 @@ def speakers_of(events: tuple[Event, ...]) -> list[PlayerId]:
     return [event.payload.speaker for event in events if isinstance(event.payload, SpeechDelivered)]
 
 
-def test_the_most_pressing_player_speaks_first_whatever_their_seat() -> None:
+async def test_the_most_pressing_player_speaks_first_whatever_their_seat() -> None:
     """The whole point of the auction: the floor is won, not handed round.
 
     Seat 7 is last in every ordering the engine had before this; wanting it more
     than anyone else has to be enough to speak first.
     """
-    state, events = a_day_of({seat: (100 if seat == 7 else 10) for seat in range(8)})
+    state, events = await a_day_of({seat: (100 if seat == 7 else 10) for seat in range(8)})
 
     assert speakers_of(events)[0] == state.players[7].id
 
 
-def test_holding_the_floor_is_what_costs_the_most_in_the_next_auction() -> None:
+async def test_holding_the_floor_is_what_costs_the_most_in_the_next_auction() -> None:
     """The anti-monopoly of D-002: nobody speaks twice in a row while others want to."""
-    _, events = a_day_of(dict.fromkeys(range(8), 50))
+    _, events = await a_day_of(dict.fromkeys(range(8), 50))
 
     spoken = speakers_of(events)
 
@@ -510,9 +510,9 @@ def test_holding_the_floor_is_what_costs_the_most_in_the_next_auction() -> None:
     assert all(first != second for first, second in itertools.pairwise(spoken))
 
 
-def test_every_bid_is_written_down_including_the_losing_ones() -> None:
+async def test_every_bid_is_written_down_including_the_losing_ones() -> None:
     """The raw material of the staging (D-075) and of tuning the coefficients."""
-    _, events = a_day_of({seat: seat * 10 for seat in range(8)})
+    _, events = await a_day_of({seat: seat * 10 for seat in range(8)})
 
     auctions = auctions_in(events)
 
@@ -520,9 +520,9 @@ def test_every_bid_is_written_down_including_the_losing_ones() -> None:
     assert len(auctions[0].scores) > 1, "the losers are kept too"
 
 
-def test_an_auction_is_for_the_spectator_alone() -> None:
+async def test_an_auction_is_for_the_spectator_alone() -> None:
     """What a player wanted to say is not something the table gets to know."""
-    _, events = a_day_of(dict.fromkeys(range(8), 50))
+    _, events = await a_day_of(dict.fromkeys(range(8), 50))
 
     auctions = auctions_in(events)
 
@@ -534,7 +534,7 @@ def test_an_auction_is_for_the_spectator_alone() -> None:
 # --- How a debate is meant to end (J5.5, D-048, D-060) -----------------------
 
 
-def a_day_played_by(
+async def a_day_played_by(
     agents: dict[PlayerId, Agent],
     control: DebateControl | None = None,
     claim: "FloorClaim | None" = None,
@@ -544,7 +544,7 @@ def a_day_played_by(
     journal = Journal()
     run = _Run(agents, journal, create_rng(3), control=control, claim=claim)
 
-    run.play_day(run.enter(state, Phase.DAY, day=2))
+    await run.play_day(run.enter(state, Phase.DAY, day=2))
     return journal.events
 
 
@@ -556,13 +556,13 @@ def forced_votes_in(events: tuple[Event, ...]) -> list[VoteForced]:
     return [event.payload for event in events if isinstance(event.payload, VoteForced)]
 
 
-def test_a_turn_nobody_used_means_the_debate_is_over() -> None:
+async def test_a_turn_nobody_used_means_the_debate_is_over() -> None:
     """An auction that produced neither a word nor a ballot ends the debate.
 
     D-060: a table with nothing left to say is put to the vote, rather than
     spending another round of model calls on the same silence.
     """
-    events = a_day_played_by(a_table_of(NeverVotesAgent))
+    events = await a_day_played_by(a_table_of(NeverVotesAgent))
 
     forced = forced_votes_in(events)
 
@@ -570,17 +570,17 @@ def test_a_turn_nobody_used_means_the_debate_is_over() -> None:
     assert forced[0].reason is ForcedVoteReason.DEBATE_EXHAUSTED
 
 
-def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
+async def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
     """The budget of turns is the other way out, and it says so in the journal."""
 
     class TalksForever:
-        def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Intent:
             return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
 
-    events = a_day_played_by(a_table_of(TalksForever))
+    events = await a_day_played_by(a_table_of(TalksForever))
 
     forced = forced_votes_in(events)
 
@@ -588,22 +588,22 @@ def test_a_debate_that_ran_out_of_turns_is_put_to_the_vote() -> None:
     assert forced[0].reason is ForcedVoteReason.TURN_BUDGET_SPENT
 
 
-def test_a_forced_vote_closes_the_round_for_everyone() -> None:
+async def test_a_forced_vote_closes_the_round_for_everyone() -> None:
     """Whatever forced it, the round ends the way D-013 says it does."""
-    events = a_day_played_by(a_table_of(NeverVotesAgent))
+    events = await a_day_played_by(a_table_of(NeverVotesAgent))
 
     voters = {event.payload.voter for event in events if isinstance(event.payload, BallotAnnounced)}
 
     assert len(voters) == 8, "every living player ends the round having voted"
 
 
-def test_the_moderator_can_cut_a_debate_short() -> None:
+async def test_the_moderator_can_cut_a_debate_short() -> None:
     """D-048: the hand the user keeps on a debate that drags on.
 
     Set to zero, the vote is called at once — and the journal says it was the
     moderator, not the table running out of things to say.
     """
-    events = a_day_played_by(a_table_of(NeverVotesAgent), control=DebateControl(turns_left=0))
+    events = await a_day_played_by(a_table_of(NeverVotesAgent), control=DebateControl(turns_left=0))
 
     forced = forced_votes_in(events)
 
@@ -615,21 +615,21 @@ def test_the_moderator_leaves_the_debate_alone_by_default() -> None:
     assert DebateControl().turns_left is None
 
 
-def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
+async def test_a_moderator_who_allows_one_turn_gets_exactly_one() -> None:
     class TalksForever:
-        def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Intent:
             return TakeTurn(speech="Je continue.") if view.may_speak else Wait()
 
-    events = a_day_played_by(a_table_of(TalksForever), control=DebateControl(turns_left=1))
+    events = await a_day_played_by(a_table_of(TalksForever), control=DebateControl(turns_left=1))
 
     assert len(speakers_of(events)) == 1
     assert forced_votes_in(events)[0].reason is ForcedVoteReason.MODERATOR
 
 
-def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
+async def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
     """What the control is for: a hand on a debate already under way (D-048).
 
     Set before the day, it is a setting. The point of D-048 is the user watching
@@ -641,16 +641,16 @@ def test_the_moderator_can_call_time_in_the_middle_of_a_debate() -> None:
     class SpeaksThenCallsTime:
         """Speaks once, and cuts the debate short as it does — as the user would."""
 
-        def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=50, intention="Encore.")
 
-        def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Intent:
             if not view.may_speak:
                 return Wait()
             control.cut_to(0)
             return TakeTurn(speech="Je serai bref.")
 
-    events = a_day_played_by(a_table_of(SpeaksThenCallsTime), control=control)
+    events = await a_day_played_by(a_table_of(SpeaksThenCallsTime), control=control)
 
     assert len(speakers_of(events)) == 1, "the debate stopped at the next turn"
     assert forced_votes_in(events)[0].reason is ForcedVoteReason.MODERATOR
@@ -666,11 +666,11 @@ class VotesFor:
         """Take the player this seat always names."""
         self._target = target
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid low: this seat is here to vote, not to argue."""
         return Bid(urgency=10, intention="Voter.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Name that player when the rules still offer them, otherwise vote blank."""
         if not view.may_vote:
             return Wait()
@@ -678,7 +678,7 @@ class VotesFor:
         return TakeTurn(vote=Vote(target=wanted))
 
 
-def a_tied_day(
+async def a_tied_day(
     targets: dict[int, PlayerId | None], *, rules: GameRules | None = None
 ) -> tuple[GameState, tuple[Event, ...]]:
     """Play a day where each seat votes for the player it was given."""
@@ -689,16 +689,16 @@ def a_tied_day(
     journal = Journal()
     run = _Run(agents, journal, create_rng(3))
 
-    closed, _ = run.play_day(run.enter(state, Phase.DAY, day=2))
+    closed, _ = await run.play_day(run.enter(state, Phase.DAY, day=2))
     return closed, journal.events
 
 
-def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
+async def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
     """Three against three: the table is asked again, and only about those two."""
     state = create_game(six_seats(), rng=create_rng(12))
     first, second = state.players[0].id, state.players[1].id
 
-    _, events = a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
+    _, events = await a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
 
     opened = [event.payload for event in events if isinstance(event.payload, RunoffOpened)]
 
@@ -706,12 +706,14 @@ def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
     assert set(opened[0].targets) == {first, second}
 
 
-def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
+async def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
     """Second tie, nobody eliminated — the rule has a floor (D-050)."""
     state = create_game(six_seats(), rng=create_rng(12))
     first, second = state.players[0].id, state.players[1].id
 
-    closed, events = a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
+    closed, events = await a_tied_day(
+        {0: second, 1: first, 2: first, 3: second, 4: first, 5: second}
+    )
 
     opened = [event.payload for event in events if isinstance(event.payload, RunoffOpened)]
     resolved = [event.payload for event in events if isinstance(event.payload, VoteResolved)]
@@ -721,13 +723,13 @@ def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> None:
     assert len(closed.living) == 6
 
 
-def test_a_table_may_be_configured_to_let_a_tie_spare_everyone_at_once() -> None:
+async def test_a_table_may_be_configured_to_let_a_tie_spare_everyone_at_once() -> None:
     """The runoff is a setting (D-050): without it, a tie is the final word."""
     state = create_game(six_seats(), rng=create_rng(12))
     first, second = state.players[0].id, state.players[1].id
     settled_at_once = GameRules(vote=VoteOptions(hold_a_runoff_on_a_tie=False))
 
-    closed, events = a_tied_day(
+    closed, events = await a_tied_day(
         {0: second, 1: first, 2: first, 3: second, 4: first, 5: second},
         rules=settled_at_once,
     )
@@ -736,11 +738,11 @@ def test_a_table_may_be_configured_to_let_a_tie_spare_everyone_at_once() -> None
     assert len(closed.living) == 6, "and a tie still spares everyone"
 
 
-def test_a_vote_that_settles_needs_no_runoff() -> None:
+async def test_a_vote_that_settles_needs_no_runoff() -> None:
     state = create_game(six_seats(), rng=create_rng(12))
     hunted = state.players[1].id
 
-    closed, events = a_tied_day(dict.fromkeys(range(6), hunted))
+    closed, events = await a_tied_day(dict.fromkeys(range(6), hunted))
 
     assert not [event for event in events if isinstance(event.payload, RunoffOpened)]
     assert not closed.is_alive(hunted)
@@ -749,7 +751,7 @@ def test_a_vote_that_settles_needs_no_runoff() -> None:
 # --- The count, and what it lets the table see (J5.4.1, D-013, D-051) --------
 
 
-def a_settled_day(*, rules: GameRules | None = None) -> tuple[Event, ...]:
+async def a_settled_day(*, rules: GameRules | None = None) -> tuple[Event, ...]:
     """Play a day where the table names one player, under the given rules."""
     state = create_game(six_seats(rules), rng=create_rng(12))
     hunted = state.players[1].id
@@ -757,7 +759,7 @@ def a_settled_day(*, rules: GameRules | None = None) -> tuple[Event, ...]:
     journal = Journal()
     run = _Run(agents, journal, create_rng(3))
 
-    run.play_day(run.enter(state, Phase.DAY, day=2))
+    await run.play_day(run.enter(state, Phase.DAY, day=2))
     return journal.events
 
 
@@ -765,7 +767,7 @@ def counts_in(events: tuple[Event, ...]) -> list[BallotsRevealed]:
     return [event.payload for event in events if isinstance(event.payload, BallotsRevealed)]
 
 
-def test_the_count_shows_who_named_whom() -> None:
+async def test_the_count_shows_who_named_whom() -> None:
     """Revealed all at once, which is the answer to models voting in herds.
 
     It is also the moment the staging is built on (D-075): every head turns to
@@ -774,7 +776,7 @@ def test_the_count_shows_who_named_whom() -> None:
     state = create_game(six_seats(), rng=create_rng(12))
     hunted = state.players[1].id
 
-    counted = counts_in(a_settled_day())
+    counted = counts_in(await a_settled_day())
 
     assert counted, "the count is a fact of the game"
     named = {(ballot.voter, ballot.target) for ballot in counted[0].ballots}
@@ -783,7 +785,7 @@ def test_the_count_shows_who_named_whom() -> None:
     }, "every ballot, with whom it named"
 
 
-def test_a_game_may_keep_its_ballots_to_themselves() -> None:
+async def test_a_game_may_keep_its_ballots_to_themselves() -> None:
     """Configurable, and the option decides whether the fact exists at all.
 
     An option that filtered the audience instead would leave the fact in the
@@ -791,11 +793,11 @@ def test_a_game_may_keep_its_ballots_to_themselves() -> None:
     """
     quiet = GameRules(information=InformationOptions(reveal_ballots_at_the_count=False))
 
-    assert counts_in(a_settled_day(rules=quiet)) == []
+    assert counts_in(await a_settled_day(rules=quiet)) == []
 
 
-def test_the_count_is_public() -> None:
-    counted = counts_in(a_settled_day())
+async def test_the_count_is_public() -> None:
+    counted = counts_in(await a_settled_day())
 
     assert counted[0].audience.scope is VisibilityScope.PUBLIC
 
@@ -803,7 +805,7 @@ def test_the_count_is_public() -> None:
 # --- The human player's two buttons (J5.6, D-014) ----------------------------
 
 
-def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
+async def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
     """The human player's first button is a bid like any other (J5.6.1).
 
     The contrast with the second one is the whole of D-014: the same seat, with
@@ -814,29 +816,29 @@ def test_asking_for_the_floor_the_ordinary_way_is_only_a_bid() -> None:
     quiet = state.players[5].id
     urgencies = {seat: (0 if seat == 5 else 100) for seat in range(8)}
 
-    _, asked = a_day_of(urgencies)
+    _, asked = await a_day_of(urgencies)
 
     claim = FloorClaim()
     claim.claim(quiet)
-    _, took = a_day_of(urgencies, claim=claim)
+    _, took = await a_day_of(urgencies, claim=claim)
 
     assert speakers_of(asked)[0] != quiet, "wanting it a little wins nothing"
     assert speakers_of(took)[0] == quiet, "the button owes the auction nothing"
 
 
-def test_the_priority_button_takes_the_next_turn_whatever_the_bids() -> None:
+async def test_the_priority_button_takes_the_next_turn_whatever_the_bids() -> None:
     """D-014: absolute priority, and it does not need to win anything."""
     state = create_game(rng=create_rng(12))
     quiet = state.players[5].id
     claim = FloorClaim()
     claim.claim(quiet)
 
-    _, events = a_day_of({seat: (0 if seat == 5 else 100) for seat in range(8)}, claim=claim)
+    _, events = await a_day_of({seat: (0 if seat == 5 else 100) for seat in range(8)}, claim=claim)
 
     assert speakers_of(events)[0] == quiet
 
 
-def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
+async def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
     """It applies at the end of the turn under way, never inside it (D-014)."""
     state = create_game(rng=create_rng(12))
     quiet = state.players[5].id
@@ -845,10 +847,10 @@ def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
     class ClaimsWhileSpeaking:
         """Presses the button in the middle of somebody else's turn."""
 
-        def bid(self, view: PlayerView) -> Bid:
+        async def bid(self, view: PlayerView) -> Bid:
             return Bid(urgency=100, intention="Parler.")
 
-        def decide(self, view: PlayerView) -> Intent:
+        async def decide(self, view: PlayerView) -> Intent:
             claim.claim(quiet)
             return TakeTurn(speech="Je finis ma phrase.") if view.may_speak else Wait()
 
@@ -856,7 +858,7 @@ def test_the_priority_button_never_cuts_a_turn_in_half() -> None:
         player.id: (Insistent(0) if player.id == quiet else ClaimsWhileSpeaking())
         for player in state.players
     }
-    events = a_day_played_by(agents, claim=claim)
+    events = await a_day_played_by(agents, claim=claim)
     spoken = speakers_of(events)
 
     assert spoken[0] != quiet, "the turn under way was finished first"
@@ -876,7 +878,7 @@ def test_a_floor_nobody_claimed_is_nobody_s() -> None:
     assert FloorClaim().take() is None
 
 
-def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
+async def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
     """A button pressed about a turn that no longer exists changes nothing.
 
     Voting gives up the floor for the round (D-013), so the claim of a player
@@ -898,7 +900,7 @@ def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None:
     # That seat votes, gives up the floor, and only then presses the button.
     opened = run._apply(opened, voted, TakeTurn(vote=Vote()))
     claim.claim(voted)
-    run.play_day(opened)
+    await run.play_day(opened)
 
     spoken = speakers_of(journal.events)
 

@@ -6,6 +6,10 @@ to do? (D-001)
 
 The engine never trusts the answer — it validates it — which is what lets a
 model be plugged in later without weakening the rules.
+
+Both answers are awaited (D-087). A scripted agent has nothing to wait for and
+returns at once; a model answers over a network, and the whole table is asked
+for its bid in one go rather than one after another (GL-7).
 """
 
 from typing import Protocol, runtime_checkable
@@ -19,7 +23,7 @@ from lupus_ex_machina.engine.views import PlayerView
 class Agent(Protocol):
     """Something able to play a seat."""
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Return how badly this player wants the floor right now (D-002).
 
         Asked far more often than :meth:`decide` — once per player per turn at
@@ -28,6 +32,6 @@ class Agent(Protocol):
         """
         ...  # pragma: no cover - a Protocol body carries no behaviour
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Return what this player wants to do, given what they know."""
         ...  # pragma: no cover - a Protocol body carries no behaviour

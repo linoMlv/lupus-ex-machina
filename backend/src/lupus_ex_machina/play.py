@@ -9,6 +9,7 @@ Output is French because it is read on screen; the code around it is English
 """
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Sequence
 
@@ -71,7 +72,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
 
     _announce_table(state, seed=options.seed)
-    _report(play_game(state, agents))
+    # The engine runs on a loop (D-087); a console command is the one caller
+    # that has to open one.
+    _report(asyncio.run(play_game(state, agents)))
     return 0
 
 

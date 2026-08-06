@@ -46,11 +46,11 @@ from lupus_ex_machina.engine.views import PlayerView
 class HuntsFirst:
     """A wolf that always puts its whole budget on the lowest-seated prey."""
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Weigh the first prey, otherwise stay out of the way."""
         if IntentKind.SHARE_PRIORITY in view.allowed_intents and view.action_targets:
             return SharePriority(
@@ -70,11 +70,11 @@ class AimsAt:
         """Take the player this agent will shoot when it gets the chance."""
         self._target = target
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Bid flatly: what this agent is for is what it does with the floor."""
         return Bid(urgency=50, intention="Jouer.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Shoot the named player, otherwise vote blank or wait."""
         if RoleActionName.SHOOT in view.available_actions and self._target in view.action_targets:
             return RoleAction(action=RoleActionName.SHOOT, target=self._target)
@@ -90,7 +90,7 @@ HUNTER = PlayerId("p1")
 VILLAGER = PlayerId("p2")
 
 
-def test_the_hunter_eaten_at_night_takes_the_last_wolf_with_him() -> None:
+async def test_the_hunter_eaten_at_night_takes_the_last_wolf_with_him() -> None:
     """Le loup mange le chasseur, le chasseur tue le loup au matin, le villageois gagne.
 
     Word for word the scenario of D-049. It only comes out this way because the
@@ -108,7 +108,7 @@ def test_the_hunter_eaten_at_night_takes_the_last_wolf_with_him() -> None:
         VILLAGER: SilentAgent(),
     }
 
-    result = play_game(GameState.initial(table), agents, journal=Journal())
+    result = await play_game(GameState.initial(table), agents, journal=Journal())
 
     assert result.outcome is Outcome.VILLAGE_WINS
     assert not result.state.player(HUNTER).alive, "the pack did take him"
@@ -116,7 +116,7 @@ def test_the_hunter_eaten_at_night_takes_the_last_wolf_with_him() -> None:
     assert result.state.player(VILLAGER).alive
 
 
-def test_a_hunter_who_kills_one_of_two_wolves_leaves_the_game_running() -> None:
+async def test_a_hunter_who_kills_one_of_two_wolves_leaves_the_game_running() -> None:
     """The second scenario of D-049: the shot answers, but it does not settle."""
     other_wolf = PlayerId("p3")
     fourth = PlayerId("p4")
@@ -135,7 +135,7 @@ def test_a_hunter_who_kills_one_of_two_wolves_leaves_the_game_running() -> None:
         fourth: SilentAgent(),
     }
 
-    result = play_game(GameState.initial(table), agents, journal=Journal())
+    result = await play_game(GameState.initial(table), agents, journal=Journal())
 
     assert result.rounds >= 2, "the game did not stop on the shot"
 
@@ -213,23 +213,23 @@ def test_a_night_can_take_the_pack_s_prey_and_the_poisoned_one() -> None:
 # --- The whole thing, a hundred times (J4.7.3) -------------------------------
 
 
-def played(seed: int) -> GameResult:
+async def played(seed: int) -> GameResult:
     rng = create_rng(seed)
     state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal())
+    return await play_game(state, agents, journal=Journal())
 
 
 @pytest.mark.parametrize("seed", range(100))
-def test_a_hundred_games_with_every_role_all_reach_a_winner(seed: int) -> None:
+async def test_a_hundred_games_with_every_role_all_reach_a_winner(seed: int) -> None:
     """The exit criterion of the jalon, on the full table of five roles."""
-    result = played(seed)
+    result = await played(seed)
 
     assert result.state.phase is Phase.ENDED
     assert result.outcome in {Outcome.VILLAGE_WINS, Outcome.WEREWOLVES_WIN}
 
 
-def test_the_corpus_actually_exercises_every_role() -> None:
+async def test_the_corpus_actually_exercises_every_role() -> None:
     """Guard the guard: a hundred games proving nothing would still be a hundred.
 
     Terminating is only worth checking on games where the powers were used, so
@@ -237,7 +237,7 @@ def test_the_corpus_actually_exercises_every_role() -> None:
     """
     used: set[RoleActionName] = set()
     for seed in range(20):
-        for event in played(seed).journal:
+        for event in (await played(seed)).journal:
             match event.payload:
                 case NightPowerUsed() as power:
                     used.add(power.action)
@@ -251,10 +251,10 @@ def test_the_corpus_actually_exercises_every_role() -> None:
     assert used == set(RoleActionName)
 
 
-def test_no_finished_game_leaves_a_hunter_owing_a_shot() -> None:
+async def test_no_finished_game_leaves_a_hunter_owing_a_shot() -> None:
     """Every debt the rules create is settled before the game is called."""
     for seed in range(20):
-        result = played(seed)
+        result = await played(seed)
         owing = [
             player
             for player in result.state.players
@@ -266,17 +266,17 @@ def test_no_finished_game_leaves_a_hunter_owing_a_shot() -> None:
         assert owing == [], f"seed {seed} ended with an unfired shot"
 
 
-def test_the_village_and_the_pack_both_win_somewhere_in_the_corpus() -> None:
+async def test_the_village_and_the_pack_both_win_somewhere_in_the_corpus() -> None:
     """A corpus one side always wins would hide half the end conditions."""
-    outcomes = {played(seed).outcome for seed in range(30)}
+    outcomes = {(await played(seed)).outcome for seed in range(30)}
 
     assert outcomes == {Outcome.VILLAGE_WINS, Outcome.WEREWOLVES_WIN}
 
 
-def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() -> None:
+async def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() -> None:
     """The end condition, read back off the games it ended (D-059)."""
     for seed in range(30):
-        final = played(seed).state
+        final = (await played(seed)).state
         wolves = len(final.living_of_team(Team.WEREWOLVES))
         villagers = len(final.living_of_team(Team.VILLAGE))
 
@@ -289,11 +289,11 @@ def test_a_finished_game_never_leaves_a_wolf_and_a_villager_at_parity() -> None:
 class SavesWhoeverIsShown:
     """A witch who pours her potion of life on the victim she is shown (D-029)."""
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Never asks for the floor: this seat is here for its potion."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Heal the prey the night shows her, if it shows her one."""
         if RoleActionName.HEAL in view.available_actions and view.victim_tonight is not None:
             return RoleAction(action=RoleActionName.HEAL, target=view.victim_tonight)
@@ -311,11 +311,11 @@ class SplitsThenSettles:
         """Start before the first round of the pack's vote."""
         self._has_split = False
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         """Say nothing: the pack's channel is not what this test is about."""
         return Bid(urgency=0, intention="Rien à dire.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         """Split the budget evenly, then name one prey when asked a second time."""
         if IntentKind.SHARE_PRIORITY not in view.allowed_intents or not view.action_targets:
             return TakeTurn(vote=Vote()) if view.may_vote else Wait()
@@ -330,7 +330,7 @@ class SplitsThenSettles:
         )
 
 
-def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
+async def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
     """D-029 has to hold however the pack got there.
 
     Woken before the pack's tie was broken, she would be shown nobody, keep her
@@ -349,7 +349,7 @@ def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
     run = _Run(agents, journal, create_rng(5))
     opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
 
-    run.play_night(run.enter(opened, Phase.RESOLUTION))
+    await run.play_night(run.enter(opened, Phase.RESOLUTION))
 
     healed = [
         event.payload
@@ -360,7 +360,7 @@ def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
     assert healed, "the witch was shown a victim and answered the bite"
 
 
-def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
+async def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
     """The night's runoff is a setting too (D-050), and this is what it costs.
 
     Without it, the same split pack leaves the night empty-handed: nobody is
@@ -378,7 +378,7 @@ def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
     run = _Run(agents, journal, create_rng(5))
     opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
 
-    closed, _ = run.play_night(run.enter(opened, Phase.RESOLUTION))
+    closed, _ = await run.play_night(run.enter(opened, Phase.RESOLUTION))
 
     assert not [event for event in journal.events if isinstance(event.payload, RunoffOpened)]
     assert len(closed.living) == len(A_TABLE_WITH_A_WITCH), "a tie spares everyone at once"

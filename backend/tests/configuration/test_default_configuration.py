@@ -19,14 +19,14 @@ from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.victory import Outcome
 
 
-def test_the_default_configuration_plays_a_whole_game() -> None:
+async def test_the_default_configuration_plays_a_whole_game() -> None:
     """From nothing but the schema to a finished game (D-068)."""
     configuration = GameConfiguration()
     rng = create_rng(configuration.rules.table.seed)
 
     state = create_game(configuration.rules, rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    result = play_game(state, agents)
+    result = await play_game(state, agents)
 
     assert result.outcome in {Outcome.VILLAGE_WINS, Outcome.WEREWOLVES_WIN}
     assert result.state.rules == configuration.rules, "the game was played by what was configured"

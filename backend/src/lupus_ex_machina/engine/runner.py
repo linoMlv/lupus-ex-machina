@@ -19,6 +19,7 @@ budget of rounds whose only purpose is to turn a hypothetical deadlock into a
 loud failure instead of a hang.
 """
 
+import asyncio
 from collections.abc import Callable, Mapping
 from typing import assert_never
 
@@ -201,7 +202,7 @@ class GameResult(BaseModel):
     journal: tuple[Event, ...] = ()
 
 
-def play_game(
+async def play_game(
     state: GameState,
     agents: Agents,
     *,
@@ -236,16 +237,16 @@ def play_game(
         claim=claim if claim is not None else FloorClaim(),
     )
     state = run.open_the_game(state)
-    state = run.play_night_zero(state)
+    state = await run.play_night_zero(state)
 
     for round_number in range(1, max_rounds + 1):
         state = run.enter(state, Phase.DAY, day=round_number)
 
-        state, outcome = run.play_day(state)
+        state, outcome = await run.play_day(state)
         if outcome is not None:
             return run.result(state, outcome, round_number)
 
-        state, outcome = run.play_night(state)
+        state, outcome = await run.play_night(state)
         if outcome is not None:
             return run.result(state, outcome, round_number)
 
@@ -291,7 +292,7 @@ class _Run:
         self._journal.record(PhaseEntered(phase=state.phase, day=state.day), at=state)
         return state
 
-    def play_night_zero(self, state: GameState) -> GameState:
+    async def play_night_zero(self, state: GameState) -> GameState:
         """Let everyone take in the situation. No action is possible (D-032).
 
         Intents are judged here like anywhere else, even though nothing legal on
@@ -299,19 +300,19 @@ class _Run:
         as refused rather than quietly ignored.
         """
         for player in state.living:
-            state = self._apply(state, player.id, self._ask(state, player.id))
+            state = self._apply(state, player.id, await self._ask(state, player.id))
         return state
 
-    def play_day(self, state: GameState) -> tuple[GameState, Outcome | None]:
+    async def play_day(self, state: GameState) -> tuple[GameState, Outcome | None]:
         """Run the debate, break a tie if there is one, then resolve the vote."""
-        state = self._debate(state)
+        state = await self._debate(state)
 
         tied = tied_targets(state)
         if tied and state.rules.vote.hold_a_runoff_on_a_tie:
-            state = self._hold_a_silent_runoff(state, tied)
+            state = await self._hold_a_silent_runoff(state, tied)
 
         self._read_the_count_out(state)
-        return self._resolve(state, resolve_day, _vote_outcome)
+        return await self._resolve(state, resolve_day, _vote_outcome)
 
     def _read_the_count_out(self, state: GameState) -> None:
         """Show the table who named whom, if the configuration allows it (D-013).
@@ -332,7 +333,9 @@ class _Run:
             at=state,
         )
 
-    def _hold_a_silent_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
+    async def _hold_a_silent_runoff(
+        self, state: GameState, tied: tuple[PlayerId, ...]
+    ) -> GameState:
         """Put a tied vote back to the table, once, without a word (D-050, D-062).
 
         No auction and no debate: the question is closed, only the answer is
@@ -343,10 +346,10 @@ class _Run:
         self._journal.record(RunoffOpened(targets=tied), at=state)
 
         for player in state.living:
-            state = self._apply(state, player.id, self._ask(state, player.id))
+            state = self._apply(state, player.id, await self._ask(state, player.id))
         return self._carry_the_undecided_to_a_blank_vote(state)
 
-    def _debate(self, state: GameState) -> GameState:
+    async def _debate(self, state: GameState) -> GameState:
         """Auction the floor over and over until the round closes itself (D-013).
 
         The round ends when the last player votes, and nothing else ends it:
@@ -363,7 +366,7 @@ class _Run:
             if self._control.is_out_of_turns:
                 return self._force_the_vote(state, ForcedVoteReason.MODERATOR)
 
-            state, acted = self._auction_the_floor(state)
+            state, acted = await self._auction_the_floor(state)
             self._control.spend_a_turn()
             if not acted:
                 return self._force_the_vote(state, ForcedVoteReason.DEBATE_EXHAUSTED)
@@ -385,7 +388,7 @@ class _Run:
         """How many turns at the floor a single day may hold at the very most."""
         return state.rules.debate.turns_per_player_per_day * len(state.living)
 
-    def _auction_the_floor(self, state: GameState) -> tuple[GameState, bool]:
+    async def _auction_the_floor(self, state: GameState) -> tuple[GameState, bool]:
         """Ask who wants to speak, and let the winner take their turn (D-002).
 
         Reports whether the turn *did* anything — a word or a ballot — which is
@@ -394,12 +397,12 @@ class _Run:
         for nothing, and so does an intent the rules refused: what matters is
         whether the round moved, not whether somebody was asked.
         """
-        speaker = self._claimed_floor(state) or self._won_floor(state)
+        speaker = self._claimed_floor(state) or await self._won_floor(state)
         if speaker is None:
             return state, False
 
         before = _round_progress(state)
-        state = self._apply(state, speaker, self._ask(state, speaker))
+        state = self._apply(state, speaker, await self._ask(state, speaker))
         return state, _round_progress(state) != before
 
     def _claimed_floor(self, state: GameState) -> PlayerId | None:
@@ -416,36 +419,46 @@ class _Run:
         self._journal.record(FloorClaimed(player=claimed), at=state)
         return claimed
 
-    def _won_floor(self, state: GameState) -> PlayerId | None:
+    async def _won_floor(self, state: GameState) -> PlayerId | None:
         """Hold an auction and hand back whoever won it, if anyone did."""
         auction = elect(
-            self._bids_of(state), floor=state.floor, rules=state.rules.debate, rng=self._rng
+            await self._bids_of(state), floor=state.floor, rules=state.rules.debate, rng=self._rng
         )
         self._journal.record(FloorAuctioned(scores=auction.scores, winner=auction.winner), at=state)
         return auction.winner
 
-    def _bids_of(self, state: GameState) -> dict[PlayerId, Bid]:
+    async def _bids_of(self, state: GameState) -> dict[PlayerId, Bid]:
         """Ask everyone who still holds the floor how badly they want it.
+
+        All at once, and this is where the budget of a game is won or lost: a
+        turn at the floor costs about seven bids, so asking in sequence would
+        stack seven latencies where one is enough (GL-7). The order of the
+        answers is the order they were asked in, whatever order they come back
+        in, so an auction stays reproducible.
 
         Whoever just spoke is not asked (D-002). The recency penalty would very
         likely have settled it anyway, but not asking is also one model call
-        saved per turn, on the one call a game makes most often (GL-7).
+        saved per turn, on the one call a game makes most often.
         """
         just_spoke = state.floor[-1].speaker if state.floor else None
-        return {
-            player.id: self._agents[player.id].bid(project(state, player.id))
+        bidders = tuple(
+            player.id
             for player in state.living
             if not state.has_voted(player.id) and player.id != just_spoke
-        }
+        )
+        bids = await asyncio.gather(
+            *(self._agents[bidder].bid(project(state, bidder)) for bidder in bidders)
+        )
+        return dict(zip(bidders, bids, strict=True))
 
-    def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
+    async def play_night(self, state: GameState) -> tuple[GameState, Outcome | None]:
         """Wake the roles in the order the night calls them, then resolve."""
         state = self.enter(state, Phase.NIGHT)
-        state = self._collect_night_intents(state)
+        state = await self._collect_night_intents(state)
 
         self._hand_out_what_the_seers_read(state)
         self._write_down_what_was_used_up(state)
-        return self._resolve(state, resolve_night, _night_outcome)
+        return await self._resolve(state, resolve_night, _night_outcome)
 
     def _write_down_what_was_used_up(self, state: GameState) -> None:
         """Record the potions this night emptied, before the round is wiped."""
@@ -464,7 +477,7 @@ class _Run:
             if state.rules.roles.speaking_seer:
                 self._journal.record(SeerFindingAnnounced(revelation=finding.revelation), at=state)
 
-    def _collect_night_intents(self, state: GameState) -> GameState:
+    async def _collect_night_intents(self, state: GameState) -> GameState:
         """Ask everyone the night wakes, in the order their role is called (D-006).
 
         Reading the callers once is safe here, and only here: nothing kills
@@ -476,12 +489,12 @@ class _Run:
         last_wolf = _last_of_the_pack(callers)
 
         for caller in callers:
-            state = self._apply(state, caller.id, self._ask(state, caller.id))
+            state = self._apply(state, caller.id, await self._ask(state, caller.id))
             if caller.id == last_wolf:
-                state = self._settle_what_the_pack_designates(state)
+                state = await self._settle_what_the_pack_designates(state)
         return state
 
-    def _settle_what_the_pack_designates(self, state: GameState) -> GameState:
+    async def _settle_what_the_pack_designates(self, state: GameState) -> GameState:
         """Close the pack's designation as soon as its last wolf has answered.
 
         Inside the round of wake-ups rather than after it, because the roles
@@ -493,19 +506,19 @@ class _Run:
         """
         tied = tied_prey(state)
         if tied and state.rules.night.hold_a_runoff_on_a_tie:
-            state = self._hold_a_runoff(state, tied)
+            state = await self._hold_a_runoff(state, tied)
 
         self._reveal_what_the_pack_weighed(state)
         return self._send_the_pack_to_the_lot(state)
 
-    def _hold_a_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
+    async def _hold_a_runoff(self, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
         """Put the tied prey back to the pack, once, without a word (D-050, D-062)."""
         state = state.reopened_for_runoff(tied)
         self._journal.record(RunoffOpened(targets=tied), at=state)
 
         for wolf in night_callers(state):
             if wolf.team is Team.WEREWOLVES:
-                state = self._apply(state, wolf.id, self._ask(state, wolf.id))
+                state = self._apply(state, wolf.id, await self._ask(state, wolf.id))
         return state
 
     def _reveal_what_the_pack_weighed(self, state: GameState) -> None:
@@ -553,7 +566,7 @@ class _Run:
                 state = self._cast(state, player.id)
         return state
 
-    def _resolve(
+    async def _resolve(
         self,
         state: GameState,
         resolver: Resolver,
@@ -564,7 +577,7 @@ class _Run:
         state, victims = resolver(state)
         self._journal.record(announce(victims), at=state)
         self._reveal_the_roles_of(state, victims)
-        state = self._let_the_hunters_fire(state)
+        state = await self._let_the_hunters_fire(state)
 
         outcome = evaluate_victory(state)
         if outcome is not None:
@@ -573,7 +586,7 @@ class _Run:
             return state, outcome
         return state, None
 
-    def _let_the_hunters_fire(self, state: GameState) -> GameState:
+    async def _let_the_hunters_fire(self, state: GameState) -> GameState:
         """Fire every shot the round owes, before the victory is looked at (D-049).
 
         This is the one place a death happens in the middle of a phase, and the
@@ -583,13 +596,13 @@ class _Run:
         while owed := hunters_owing_a_shot(state):
             hunter = owed[0]
             state = self.enter(state, Phase.AVENGING_SHOT)
-            state = self._fire(state, hunter.id)
+            state = await self._fire(state, hunter.id)
             state = self.enter(state, Phase.RESOLUTION)
         return state
 
-    def _fire(self, state: GameState, hunter: PlayerId) -> GameState:
+    async def _fire(self, state: GameState, hunter: PlayerId) -> GameState:
         """Take the hunter's aim, or the engine's when he will not give one."""
-        aimed = self._aim_of(state, hunter)
+        aimed = await self._aim_of(state, hunter)
         state = state.with_power_spent_by(hunter, RoleActionName.SHOOT)
         self._journal.record(PowerSpent(actor=hunter, action=RoleActionName.SHOOT), at=state)
         if aimed is None:
@@ -603,9 +616,9 @@ class _Run:
         self._reveal_the_roles_of(state, (target,))
         return state
 
-    def _aim_of(self, state: GameState, hunter: PlayerId) -> tuple[PlayerId, bool] | None:
+    async def _aim_of(self, state: GameState, hunter: PlayerId) -> tuple[PlayerId, bool] | None:
         """Whom the shot takes, and whether the hunter is the one who said so."""
-        intent = self._ask(state, hunter)
+        intent = await self._ask(state, hunter)
         if isinstance(intent, RoleAction) and self._accepts(state, hunter, intent):
             return intent.target, True
 
@@ -648,8 +661,8 @@ class _Run:
 
     # --- Agents ----------------------------------------------------------
 
-    def _ask(self, state: GameState, player: PlayerId) -> Intent:
-        return self._agents[player].decide(project(state, player))
+    async def _ask(self, state: GameState, player: PlayerId) -> Intent:
+        return await self._agents[player].decide(project(state, player))
 
     def _apply(self, state: GameState, actor: PlayerId, intent: Intent) -> GameState:
         """Validate then apply. An intent refused costs its author a turn, nothing more."""

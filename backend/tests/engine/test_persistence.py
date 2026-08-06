@@ -89,12 +89,12 @@ def test_writing_a_journal_creates_the_directory_it_belongs_in(tmp_path: Path) -
     assert read_journal(path)
 
 
-def test_a_whole_game_survives_a_trip_through_a_file(tmp_path: Path) -> None:
+async def test_a_whole_game_survives_a_trip_through_a_file(tmp_path: Path) -> None:
     """The point of the exercise: a game replayed from disk is the same game."""
     rng = create_rng(3)
     state = create_game(rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    result = play_game(state, agents, journal=Journal())
+    result = await play_game(state, agents, journal=Journal())
 
     path = tmp_path / "game.jsonl"
     write_journal(path, result.journal)

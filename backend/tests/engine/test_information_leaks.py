@@ -51,15 +51,15 @@ CORPUS = range(100)
 SAMPLE = range(12)
 
 
-def played(seed: int, *, rules: GameRules | None = None) -> GameResult:
+async def played(seed: int, *, rules: GameRules | None = None) -> GameResult:
     """Play one full game of random agents, journalling everything."""
     rng = create_rng(seed)
     state = create_game(rules, rng=rng)
     agents: dict[PlayerId, Agent] = {player.id: RandomAgent(rng=rng) for player in state.players}
-    return play_game(state, agents, journal=Journal())
+    return await play_game(state, agents, journal=Journal())
 
 
-def played_with_a_rogue(seed: int) -> GameResult:
+async def played_with_a_rogue(seed: int) -> GameResult:
     """A game where one seat keeps playing intents the rules refuse.
 
     The well-behaved agents never produce one, so without this the property
@@ -71,7 +71,7 @@ def played_with_a_rogue(seed: int) -> GameResult:
         player.id: RogueAgent() if player.seat == 0 else RandomAgent(rng=rng)
         for player in state.players
     }
-    return play_game(state, agents, journal=Journal())
+    return await play_game(state, agents, journal=Journal())
 
 
 def everyone_at(state: GameState) -> list[Recipient]:
@@ -109,17 +109,17 @@ def payloads_of(events: Iterable[Event], kind: type) -> list[Event]:
 
 
 @pytest.mark.parametrize("seed", CORPUS)
-def test_a_projection_only_ever_holds_facts_its_recipient_is_entitled_to(seed: int) -> None:
-    result = played(seed)
+async def test_a_projection_only_ever_holds_facts_its_recipient_is_entitled_to(seed: int) -> None:
+    result = await played(seed)
 
     for recipient in everyone_at(result.state):
         for event in project_journal(result.journal, recipient):
             assert event.is_visible_to(recipient), f"{event.payload.kind} reached {recipient}"
 
 
-def test_the_corpus_actually_hides_things_from_everyone() -> None:
+async def test_the_corpus_actually_hides_things_from_everyone() -> None:
     """Guard the guard: over a game where nothing is secret, every test above passes."""
-    result = played(seed=1)
+    result = await played(seed=1)
 
     for recipient in everyone_at(result.state):
         withheld = len(result.journal) - len(project_journal(result.journal, recipient))
@@ -130,7 +130,7 @@ def test_the_corpus_actually_hides_things_from_everyone() -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
+async def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
     """The one secret the whole game turns on, searched for under any field.
 
     Run with every setting that hands a role out switched off — no revelation at
@@ -138,7 +138,7 @@ def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
     read is then necessarily a leak, which is what makes the sweep worth running.
     What the seer is *entitled* to read is a rule of her own, tested with her.
     """
-    result = played(
+    result = await played(
         seed,
         rules=GameRules(
             information=InformationOptions(reveal_role_on_death=False),
@@ -154,9 +154,9 @@ def test_no_player_can_read_a_role_other_than_their_own(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_nobody_learns_whom_another_player_voted_for(seed: int) -> None:
+async def test_nobody_learns_whom_another_player_voted_for(seed: int) -> None:
     """Who voted is the pressure of the round; for whom is not (D-013)."""
-    result = played(seed)
+    result = await played(seed)
 
     for player in result.state.players:
         readable = payloads_of(project_journal(result.journal, Recipient.of(player)), BallotCast)
@@ -170,13 +170,13 @@ def test_nobody_learns_whom_another_player_voted_for(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_a_voter_can_always_re_read_their_own_ballot(seed: int) -> None:
+async def test_a_voter_can_always_re_read_their_own_ballot(seed: int) -> None:
     """The counterpart of the rule above, and what an agent needs in J7.
 
     A player keeps analysing after voting (D-028), so their own vote has to stay
     part of what they know.
     """
-    result = played(seed)
+    result = await played(seed)
 
     for player in result.state.players:
         own = {
@@ -196,9 +196,9 @@ def test_a_voter_can_always_re_read_their_own_ballot(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_the_channel_of_the_pack_never_reaches_a_villager(seed: int) -> None:
+async def test_the_channel_of_the_pack_never_reaches_a_villager(seed: int) -> None:
     """The reason a visibility model exists at all (D-007)."""
-    result = played(seed)
+    result = await played(seed)
 
     for player in result.state.players:
         seen = project_journal(result.journal, Recipient.of(player))
@@ -211,9 +211,9 @@ def test_the_channel_of_the_pack_never_reaches_a_villager(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_nobody_at_the_table_learns_that_an_intent_was_refused(seed: int) -> None:
+async def test_nobody_at_the_table_learns_that_an_intent_was_refused(seed: int) -> None:
     """Fumbling stays between the engine and the audience."""
-    result = played_with_a_rogue(seed)
+    result = await played_with_a_rogue(seed)
 
     assert payloads_of(result.journal, IntentRejected), "no refusal happened, so nothing is proven"
 
@@ -227,9 +227,9 @@ def test_nobody_at_the_table_learns_that_an_intent_was_refused(seed: int) -> Non
 
 
 @pytest.mark.parametrize("seed", CORPUS)
-def test_every_death_reaches_every_single_recipient(seed: int) -> None:
+async def test_every_death_reaches_every_single_recipient(seed: int) -> None:
     """Death is never configurable, whatever took the player (D-072)."""
-    result = played(seed)
+    result = await played(seed)
     deaths = {
         event.sequence
         for event in payloads_of(result.journal, VoteResolved)
@@ -244,8 +244,8 @@ def test_every_death_reaches_every_single_recipient(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_the_role_of_the_dead_reaches_everyone_when_it_is_revealed(seed: int) -> None:
-    result = played(
+async def test_the_role_of_the_dead_reaches_everyone_when_it_is_revealed(seed: int) -> None:
+    result = await played(
         seed, rules=GameRules(information=InformationOptions(reveal_role_on_death=True))
     )
     revelations = {event.sequence for event in payloads_of(result.journal, RoleRevealed)}
@@ -258,9 +258,9 @@ def test_the_role_of_the_dead_reaches_everyone_when_it_is_revealed(seed: int) ->
 
 
 @pytest.mark.parametrize("seed", SAMPLE)
-def test_a_hidden_role_stays_hidden_even_once_its_holder_is_dead(seed: int) -> None:
+async def test_a_hidden_role_stays_hidden_even_once_its_holder_is_dead(seed: int) -> None:
     """The option decides whether the fact happens, never who may read it."""
-    result = played(
+    result = await played(
         seed, rules=GameRules(information=InformationOptions(reveal_role_on_death=False))
     )
 
@@ -356,13 +356,13 @@ def moments_of(result: GameResult) -> list[GameState]:
 
 
 @pytest.mark.parametrize("seed", FEW)
-def test_no_view_ever_carries_a_role_other_than_its_viewers(seed: int) -> None:
+async def test_no_view_ever_carries_a_role_other_than_its_viewers(seed: int) -> None:
     """The projection an agent receives is a view too (D-001, GL-3).
 
     Held separately from the journal on purpose: the view is what reaches a
     prompt, and nothing but a test ties the two together.
     """
-    result = played(seed)
+    result = await played(seed)
 
     for state in moments_of(result):
         for player in state.players:
@@ -372,7 +372,7 @@ def test_no_view_ever_carries_a_role_other_than_its_viewers(seed: int) -> None:
             assert not (readable & foreign), f"{player.name} could read {readable & foreign}"
 
 
-def test_whom_someone_named_changes_nothing_in_anybody_elses_view() -> None:
+async def test_whom_someone_named_changes_nothing_in_anybody_elses_view() -> None:
     """Two games differing only by a secret must look identical to whoever is not entitled.
 
     Comparing whole views is what makes this falsifiable: a field that carried
@@ -384,8 +384,11 @@ def test_whom_someone_named_changes_nothing_in_anybody_elses_view() -> None:
     at all. The count at the end is what refuses that.
     """
     checked = 0
+    # The games are played first: awaiting inside the comprehension would make it
+    # an asynchronous generator, which is not what the sweep below iterates over.
+    games = [await played(seed) for seed in FEW]
 
-    for state in (moment for seed in FEW for moment in moments_of(played(seed))):
+    for state in (moment for game in games for moment in moments_of(game)):
         for rank, ballot in enumerate(state.ballots):
             if ballot.target is None:
                 continue

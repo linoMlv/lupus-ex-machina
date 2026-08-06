@@ -226,22 +226,22 @@ A_TABLE_LED_BY_A_HUNTER = (
 )
 
 
-def a_game_where_the_hunter_is_lynched(rules: GameRules) -> GameResult:
+async def a_game_where_the_hunter_is_lynched(rules: GameRules) -> GameResult:
     """Everyone accuses the lowest seat, which is the hunter; he never aims."""
     agents: dict[PlayerId, Agent] = {
         player.id: SilentAgent() if player.id == HUNTER else AlwaysAccuseAgent()
         for player in A_TABLE_LED_BY_A_HUNTER
     }
-    return play_game(
+    return await play_game(
         GameState.initial(A_TABLE_LED_BY_A_HUNTER, rules=rules),
         agents,
         journal=Journal(),
     )
 
 
-def test_a_hunter_who_will_not_aim_is_aimed_for() -> None:
+async def test_a_hunter_who_will_not_aim_is_aimed_for() -> None:
     """Non-renounceable means the shot happens anyway (D-055)."""
-    result = a_game_where_the_hunter_is_lynched(MANDATORY)
+    result = await a_game_where_the_hunter_is_lynched(MANDATORY)
     fired = [event.payload for event in result.journal if isinstance(event.payload, ShotFired)]
 
     assert fired, "the engine fired for him"
@@ -249,8 +249,8 @@ def test_a_hunter_who_will_not_aim_is_aimed_for() -> None:
     assert fired[0].chosen_by_the_hunter is False
 
 
-def test_a_hunter_who_declines_an_optional_shot_takes_nobody() -> None:
-    result = a_game_where_the_hunter_is_lynched(OPTIONAL)
+async def test_a_hunter_who_declines_an_optional_shot_takes_nobody() -> None:
+    result = await a_game_where_the_hunter_is_lynched(OPTIONAL)
 
     assert not [event for event in result.journal if isinstance(event.payload, ShotFired)]
     assert not result.state.player(HUNTER).alive, "he was lynched all the same"

@@ -158,20 +158,20 @@ def test_a_witch_allowed_to_save_herself_may_pour_the_potion_on_herself() -> Non
     assert WITCH in project(state, WITCH).action_targets
 
 
-def test_a_game_that_reveals_nothing_records_no_revelation() -> None:
+async def test_a_game_that_reveals_nothing_records_no_revelation() -> None:
     """Catégorie Information et visibilité."""
     silent = GameRules(information=InformationOptions(reveal_role_on_death=False))
 
-    assert _revelations_in(silent) == 0
-    assert _revelations_in(GameRules()) > 0, "and the default does reveal"
+    assert await _revelations_in(silent) == 0
+    assert await _revelations_in(GameRules()) > 0, "and the default does reveal"
 
 
-def _revelations_in(rules: GameRules) -> int:
+async def _revelations_in(rules: GameRules) -> int:
     state = create_game(rules, rng=create_rng(3))
     agents: dict[PlayerId, Agent] = {
         player.id: RandomAgent(rng=create_rng(3)) for player in state.players
     }
-    result = play_game(state, agents, journal=Journal())
+    result = await play_game(state, agents, journal=Journal())
     return sum(isinstance(event.payload, RoleRevealed) for event in result.journal)
 
 
@@ -202,7 +202,7 @@ def test_waiting_stays_legal_where_nothing_else_is_on_offer() -> None:
     validate_intent(GameState.initial(TABLE, rules=impatient), WOLF, Wait())
 
 
-def test_a_moderator_who_calls_time_before_the_debate_opens_forces_the_vote() -> None:
+async def test_a_moderator_who_calls_time_before_the_debate_opens_forces_the_vote() -> None:
     """Catégorie Vote: the moderator's control, set before the game (D-048)."""
     hurried = GameRules(vote=VoteOptions(turns_before_forced_vote=0))
     state = create_game(hurried, rng=create_rng(3))
@@ -210,7 +210,7 @@ def test_a_moderator_who_calls_time_before_the_debate_opens_forces_the_vote() ->
         player.id: RandomAgent(rng=create_rng(3)) for player in state.players
     }
 
-    result = play_game(state, agents, journal=Journal())
+    result = await play_game(state, agents, journal=Journal())
     forced = [event.payload for event in result.journal if isinstance(event.payload, VoteForced)]
 
     assert forced, "the vote was called rather than debated"
@@ -235,18 +235,18 @@ def test_the_pack_shares_the_budget_of_points_it_was_given() -> None:
         )
 
 
-def test_a_day_may_be_given_fewer_turns_at_the_floor() -> None:
+async def test_a_day_may_be_given_fewer_turns_at_the_floor() -> None:
     """Catégorie Débat et parole: the ceiling on model calls is a setting (GL-7).
 
     Not a rule of the game: a debate is meant to end when the last player votes
     (D-013). This only stops a table that never does from spending an unbounded
     number of calls.
     """
-    assert _turns_before_the_budget_ran_out(1) == 8, "one turn each, at a table of eight"
-    assert _turns_before_the_budget_ran_out(2) == 16
+    assert await _turns_before_the_budget_ran_out(1) == 8, "one turn each, at a table of eight"
+    assert await _turns_before_the_budget_ran_out(2) == 16
 
 
-def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
+async def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
     """How many turns at the floor a day of endless talkers actually held.
 
     Counting them is the point: asserting only that the budget *eventually* ran
@@ -261,7 +261,7 @@ def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
     # A table that talks and never votes eliminates nobody, so the game runs out
     # of rounds — the round budget doing its job (D-078), not what is under test.
     with pytest.raises(GameDidNotEndError):
-        play_game(state, agents, journal=journal, max_rounds=2)
+        await play_game(state, agents, journal=journal, max_rounds=2)
 
     spoken = 0
     for event in journal.events:
@@ -277,10 +277,10 @@ def _turns_before_the_budget_ran_out(turns_per_player: int) -> int:
 class _NeverVotes:
     """A player who always wants the floor and never closes the round."""
 
-    def bid(self, view: PlayerView) -> Bid:
+    async def bid(self, view: PlayerView) -> Bid:
         return Bid(urgency=100, intention="J'ai encore quelque chose à dire.")
 
-    def decide(self, view: PlayerView) -> Intent:
+    async def decide(self, view: PlayerView) -> Intent:
         return TakeTurn(speech="Je parle.") if view.may_speak else Wait()
 
 
