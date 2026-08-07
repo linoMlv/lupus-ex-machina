@@ -63,12 +63,46 @@ def constants_of(module: Path) -> list[str]:
     return found
 
 
+def dotted_name(module: Path, root: Path) -> str:
+    """How a module is named in ALLOWED: ``runner.day`` for one in a sub-package.
+
+    A façade is named for its package: ``runner/__init__.py`` reads ``runner``,
+    which is also how the rest of the code imports from it.
+    """
+    parts = module.relative_to(root).with_suffix("").parts
+    return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+
+def constants_under(root: Path) -> dict[str, str]:
+    """Every module-level constant under that root, keyed by ``module.NAME``."""
+    return {
+        f"{dotted_name(module, root)}.{name}": dotted_name(module, root)
+        for module in sorted(root.rglob("*.py"))
+        for name in constants_of(module)
+    }
+
+
 def engine_constants() -> dict[str, str]:
     """Every module-level constant of the engine, keyed by ``module.NAME``."""
-    return {
-        f"{module.stem}.{name}": module.stem
-        for module in sorted(ENGINE.glob("*.py"))
-        for name in constants_of(module)
+    return constants_under(ENGINE)
+
+
+def test_the_scan_walks_sub_packages(tmp_path: Path) -> None:
+    """A constant buried in a sub-package is found, and named for where it lives.
+
+    The engine is split into packages wherever a file held several
+    responsibilities (R1). A scan that stopped at the top level would keep
+    passing while reading almost nothing — the guard has to follow the code down.
+    """
+    (tmp_path / "flat.py").write_text("AT_THE_TOP = 1", encoding="utf-8")
+    (tmp_path / "nested").mkdir()
+    (tmp_path / "nested" / "__init__.py").write_text("IN_THE_FACADE = 2", encoding="utf-8")
+    (tmp_path / "nested" / "deep.py").write_text("FURTHER_DOWN = 3", encoding="utf-8")
+
+    assert set(constants_under(tmp_path)) == {
+        "flat.AT_THE_TOP",
+        "nested.IN_THE_FACADE",
+        "nested.deep.FURTHER_DOWN",
     }
 
 
