@@ -22,7 +22,7 @@ from functools import cache
 from pydantic import BaseModel, ConfigDict, Field
 
 from lupus_ex_machina.configuration.agents import Personality
-from lupus_ex_machina.llm.prompting import PROMPTS
+from lupus_ex_machina.llm.pieces import PROMPTS
 
 #: What being an extravert is worth in an auction, in points of urgency. Applied
 #: symmetrically: an introvert bids that much less. Indicative and meant to be
