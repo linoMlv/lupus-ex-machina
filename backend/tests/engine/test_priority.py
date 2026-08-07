@@ -15,7 +15,7 @@ import pytest
 from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.priority import Tally, tally
-from lupus_ex_machina.engine.state import PriorityShare
+from lupus_ex_machina.engine.records import PriorityShare
 
 WOLF = PlayerId("w0")
 OTHER_WOLF = PlayerId("w1")

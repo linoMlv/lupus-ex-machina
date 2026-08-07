@@ -35,9 +35,10 @@ from lupus_ex_machina.engine.intents import PriorityPoint
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
+from lupus_ex_machina.engine.records import Speech
 from lupus_ex_machina.engine.replay import JournalReplayError, replay
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.engine.state import GameState, Speech
+from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 
 WOLF = Player(id=PlayerId("p0"), name="Adèle", seat=0, role=RoleName.WEREWOLF)

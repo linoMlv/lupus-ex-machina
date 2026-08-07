@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel, ConfigDict
 
 from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.state import PriorityShare
+from lupus_ex_machina.engine.records import PriorityShare
 
 
 class TargetTotal(BaseModel):

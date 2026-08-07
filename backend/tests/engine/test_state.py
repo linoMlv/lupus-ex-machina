@@ -10,8 +10,9 @@ from pydantic import ValidationError
 from lupus_ex_machina.engine.errors import IllegalTransitionError
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
+from lupus_ex_machina.engine.records import Speech
 from lupus_ex_machina.engine.roles import RoleName, Team
-from lupus_ex_machina.engine.state import GameState, Speech
+from lupus_ex_machina.engine.state import GameState
 
 WOLF = PlayerId("p0")
 VILLAGER = PlayerId("p1")

@@ -50,8 +50,9 @@ from lupus_ex_machina.engine.events import (
 )
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
+from lupus_ex_machina.engine.records import count_words
 from lupus_ex_machina.engine.roles import RoleName
-from lupus_ex_machina.engine.state import GameState, count_words
+from lupus_ex_machina.engine.state import GameState
 
 
 class JournalReplayError(EngineError):

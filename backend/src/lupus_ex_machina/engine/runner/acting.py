@@ -18,8 +18,9 @@ from lupus_ex_machina.engine.events import (
 )
 from lupus_ex_machina.engine.intents import Intent, RoleAction, SharePriority, TakeTurn, Wait
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.records import count_words
 from lupus_ex_machina.engine.runner.scribe import Scribe
-from lupus_ex_machina.engine.state import GameState, count_words
+from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.validation import validate_intent
 
 

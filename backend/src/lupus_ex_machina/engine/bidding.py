@@ -19,9 +19,9 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.records import Speech
 from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.rules import DebateOptions
-from lupus_ex_machina.engine.state import Speech
 
 
 class Bid(BaseModel):

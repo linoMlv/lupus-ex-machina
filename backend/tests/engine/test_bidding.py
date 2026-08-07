@@ -14,9 +14,9 @@ from pydantic import ValidationError
 
 from lupus_ex_machina.engine.bidding import Bid, BidScore, elect, score_of
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.records import Speech
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.rules import DebateOptions
-from lupus_ex_machina.engine.state import Speech
 
 # --- What an agent answers when asked (J5.1.1) -------------------------------
 
