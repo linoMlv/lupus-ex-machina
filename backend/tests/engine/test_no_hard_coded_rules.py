@@ -39,6 +39,7 @@ ALLOWED: dict[str, str] = {
     ),
     "runner.__all__": "what the package exports, not a value a game holds",
     "events.__all__": "what the package exports, not a value a game holds",
+    "rules.__all__": "what the package exports, not a value a game holds",
     "runner.scribe.Agents": "a type alias",
     "runner.scribe.Events": "a type alias",
     "runner.closing.Resolver": "a type alias",
