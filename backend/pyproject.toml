@@ -41,7 +41,9 @@ packages = ["src/lupus_ex_machina"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# `tests` is on the path so that a helper shared by several test modules can
+# live in `tests/support/` and be imported by name (R1.8).
+pythonpath = ["src", "tests"]
 filterwarnings = ["error"]
 # The engine is asynchronous (D-087), so most of the suite is too. Auto mode
 # spares every one of those tests a marker that would say nothing the `async def`
