@@ -1,22 +1,15 @@
-"""Who gets to speak next (D-002).
+"""What a bid is worth: the answer, the bonuses, the penalties (J5.1, D-002).
 
-This is the heart of the project. A language model wants nothing until it is
-asked, so the engine asks: after every turn at the floor, each living player
-answers how badly they want to speak, and the engine arbitrates.
-
-The scores are what the arbitration is *made* of, so they are tested here on
-their own, away from any game. What a real debate does with them is in
-``test_runner.py``.
+Every coefficient here is configuration, never code — D-002 is explicit
+that they are indicative and have to be calibrated by playing.
 """
 
 import pytest
 from pydantic import ValidationError
 
-from lupus_ex_machina.engine.bidding import Bid, BidScore, elect, score_of
-from lupus_ex_machina.engine.players import PlayerId
-from lupus_ex_machina.engine.records import Speech
-from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.bidding import Bid, score_of
 from lupus_ex_machina.engine.rules import DebateOptions
+from support.bids import ADELE, BASILE, CAMILLE, RULES, bid_of, spoke
 
 # --- What an agent answers when asked (J5.1.1) -------------------------------
 
@@ -48,12 +41,6 @@ def test_a_bid_says_what_it_is_for() -> None:
 
 # --- What a bid is worth once the day is taken into account (J5.1.2) ---------
 
-RULES = DebateOptions()
-
-ADELE = PlayerId("p0")
-BASILE = PlayerId("p1")
-CAMILLE = PlayerId("p2")
-
 
 def test_a_bid_in_an_untouched_day_is_worth_its_urgency() -> None:
     """Nothing has been said yet, so there is nothing to add or take away."""
@@ -77,23 +64,6 @@ def test_a_score_keeps_its_parts_apart() -> None:
 
 
 # --- Being talked to, and being accused (J5.1.3) -----------------------------
-
-
-def spoke(
-    speaker: PlayerId,
-    *,
-    words: int = 10,
-    addressed: PlayerId | None = None,
-    accused: PlayerId | None = None,
-) -> Speech:
-    """One turn at the floor, written the way a test reads it."""
-    return Speech(speaker=speaker, words=words, addressed=addressed, accused=accused)
-
-
-def bid_of(bidder: PlayerId, urgency: int, floor: tuple[Speech, ...]) -> BidScore:
-    return score_of(
-        Bid(urgency=urgency, intention="Répondre"), bidder=bidder, floor=floor, rules=RULES
-    )
 
 
 def test_being_spoken_to_makes_a_bid_more_pressing() -> None:
@@ -237,93 +207,3 @@ def test_a_game_may_let_the_floor_be_held() -> None:
     )
 
     assert scored.penalty == 0
-
-
-# --- Who takes the floor (J5.1.6) --------------------------------------------
-
-
-def wants(urgency: int) -> Bid:
-    return Bid(urgency=urgency, intention="Parler")
-
-
-def test_the_most_pressing_bid_takes_the_floor() -> None:
-    auction = elect(
-        {ADELE: wants(30), BASILE: wants(80), CAMILLE: wants(50)},
-        floor=(),
-        rules=RULES,
-        rng=create_rng(1),
-    )
-
-    assert auction.winner == BASILE
-
-
-def test_a_bid_is_weighed_before_it_is_compared() -> None:
-    """Urgency alone would hand the floor to whoever just held it."""
-    auction = elect(
-        {ADELE: wants(80), BASILE: wants(60)},
-        floor=(spoke(ADELE),),
-        rules=RULES,
-        rng=create_rng(1),
-    )
-
-    assert auction.winner == BASILE
-
-
-def test_an_auction_keeps_every_bid_it_weighed() -> None:
-    """Losing bids are the raw material of the staging (D-075) and of tuning."""
-    auction = elect(
-        {ADELE: wants(30), BASILE: wants(80), CAMILLE: wants(50)},
-        floor=(),
-        rules=RULES,
-        rng=create_rng(1),
-    )
-
-    assert [score.bidder for score in auction.scores] == [BASILE, CAMILLE, ADELE]
-
-
-def test_an_auction_nobody_entered_gives_the_floor_to_nobody() -> None:
-    auction = elect({}, floor=(), rules=RULES, rng=create_rng(1))
-
-    assert auction.winner is None
-    assert auction.scores == ()
-
-
-def test_a_tie_is_drawn_rather_than_given_to_a_seat() -> None:
-    """Same reasoning as D-081: a fixed order would favour the same player."""
-    tied = {ADELE: wants(50), BASILE: wants(50), CAMILLE: wants(50)}
-
-    winners = {
-        elect(tied, floor=(), rules=RULES, rng=create_rng(seed)).winner for seed in range(20)
-    }
-
-    assert winners == {ADELE, BASILE, CAMILLE}
-
-
-def test_the_same_seed_hands_the_floor_to_the_same_player() -> None:
-    tied = {ADELE: wants(50), BASILE: wants(50)}
-
-    drawn = {elect(tied, floor=(), rules=RULES, rng=create_rng(3)).winner for _ in range(5)}
-
-    assert len(drawn) == 1
-
-
-def test_a_tie_is_only_drawn_between_the_bids_that_tied() -> None:
-    bids = {ADELE: wants(50), BASILE: wants(50), CAMILLE: wants(10)}
-
-    winners = {
-        elect(bids, floor=(), rules=RULES, rng=create_rng(seed)).winner for seed in range(20)
-    }
-
-    assert winners == {ADELE, BASILE}
-
-
-def test_spending_the_whole_quota_is_still_within_it() -> None:
-    """Where exactly the line falls.
-
-    The quota is what a player may spend, not the point at which spending
-    starts to cost. Nothing pins that down but a test: a mutation moving the
-    comparison by one went unnoticed until this was written.
-    """
-    exactly = (spoke(ADELE, words=RULES.word_quota),)
-
-    assert bid_of(ADELE, 50, (*exactly, *(spoke(BASILE) for _ in range(9)))).penalty == 0

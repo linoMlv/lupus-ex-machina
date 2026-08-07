@@ -1,59 +1,24 @@
-"""An agent that plays a seat with a model behind it (J7.4).
-
-Never over the network: the provider is the fake one, so a whole game is played
-in a test, for free and instantly (GL-2). What is under test is the translation
-in both directions — a projected view into a prompt, and a model's answer into
-an intent the engine will take.
-"""
+"""A model's answer becomes a move the engine will take (J7.4, D-001)."""
 
 import json
 
-from lupus_ex_machina.configuration.agents import Personality
 from lupus_ex_machina.engine.intents import PriorityPoint, RoleAction, SharePriority, TakeTurn
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import RoleActionName
-from lupus_ex_machina.engine.rules import GameRules, NightOptions
 from lupus_ex_machina.engine.runner import play_game
 from lupus_ex_machina.engine.setup import create_game
-from lupus_ex_machina.engine.turn import AddNote, DropNote
+from lupus_ex_machina.engine.turn import AddNote
 from lupus_ex_machina.engine.views import project
-from lupus_ex_machina.llm.agent import LlmAgent
 from lupus_ex_machina.llm.answers import (
-    BidAnswer,
     Emote,
     PriorityAnswer,
-    ReflectionAnswer,
     TurnAnswer,
 )
 from lupus_ex_machina.llm.fake import FakeCompletions
-from lupus_ex_machina.llm.personalities import personalities
+from support.seats import FORCED, answering, seated
 
-#: A pack made to leave every night with a victim, so a table of models that
-#: never names anybody still reaches an end (D-078, D-081).
-FORCED = GameRules(night=NightOptions(require_werewolf_target=True))
-
-
-def answering(schema: type, messages: object) -> str:
-    """A plausible answer for each shape, with nothing but a thought in it.
-
-    Enough to play a whole game: nobody names anybody, so the day is closed by
-    the forced vote and the night by the lot (D-060, D-081).
-    """
-    if schema is BidAnswer:
-        return BidAnswer(urgency=50, intention="Peut-être parler.").model_dump_json()
-    if schema is ReflectionAnswer:
-        return ReflectionAnswer(reasoning="Ce tour m'a appris peu de choses.").model_dump_json()
-    return TurnAnswer(reasoning="Je regarde qui parle le plus.").model_dump_json()
-
-
-def seated(provider: FakeCompletions, personality: Personality = Personality.INTJ) -> LlmAgent:
-    return LlmAgent(
-        completions=provider,
-        personality=personalities()[personality],
-        bidding_model="ministral-3b-latest",
-        generation_model="mistral-small-latest",
-    )
+# --- A model's answer becomes a move the engine will take (J7.4) -------------
 
 
 async def test_a_whole_game_is_played_by_models_without_a_network() -> None:
@@ -232,57 +197,3 @@ async def test_what_a_model_writes_is_cut_to_the_words_the_rules_allow() -> None
     note = turn.notebook[0]
     assert isinstance(note, AddNote)
     assert len(note.note.split()) == view.limits.notebook_words
-
-
-async def test_an_extravert_bids_higher_than_an_introvert_on_the_same_answer() -> None:
-    """D-064: a temperament shifts the auction, it does not merely colour the prose."""
-    state = create_game(FORCED, rng=create_rng(4)).entering(Phase.DAY, day=2)
-    view = project(state, state.players[0].id)
-    answered = json.dumps({"urgency": 50, "intention": "Parler."})
-
-    outspoken = await seated(FakeCompletions(script=[answered]), Personality.ENFP).bid(view, ())
-    reserved = await seated(FakeCompletions(script=[answered]), Personality.INTJ).bid(view, ())
-
-    assert outspoken.urgency > reserved.urgency
-
-
-async def test_an_urgency_never_leaves_its_scale_whatever_the_temperament() -> None:
-    """The bias is applied to a number the auction reads, so it stays a number it can read."""
-    state = create_game(FORCED, rng=create_rng(4)).entering(Phase.DAY, day=2)
-    view = project(state, state.players[0].id)
-
-    highest = await seated(
-        FakeCompletions(script=[json.dumps({"urgency": 100, "intention": "Tout."})]),
-        Personality.ENFP,
-    ).bid(view, ())
-    lowest = await seated(
-        FakeCompletions(script=[json.dumps({"urgency": 0, "intention": "Rien."})]),
-        Personality.INTJ,
-    ).bid(view, ())
-
-    assert (highest.urgency, lowest.urgency) == (100, 0)
-
-
-async def test_a_note_a_model_strikes_out_survives_the_trimming_untouched() -> None:
-    """A deletion carries no text, which is why it is its own type (D-005)."""
-    state = create_game(FORCED, rng=create_rng(4)).entering(Phase.DAY, day=2)
-    provider = FakeCompletions(
-        script=[
-            TurnAnswer(
-                reasoning="Cette note ne vaut plus rien.",
-                notebook=(DropNote(entry=2),),
-                votes_blank=True,
-            ).model_dump_json()
-        ]
-    )
-
-    turn = await seated(provider).decide(project(state, state.players[0].id), ())
-
-    assert turn.notebook == (DropNote(entry=2),)
-
-
-def test_a_seat_says_which_model_it_bids_with() -> None:
-    """Read by the console command, and by the spectator later (D-077)."""
-    agent = seated(FakeCompletions())
-
-    assert agent.bidding_model == "ministral-3b-latest"
