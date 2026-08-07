@@ -38,6 +38,7 @@ ALLOWED: dict[str, str] = {
         "the technical net of D-078, which must never become a rule of the game"
     ),
     "runner.__all__": "what the package exports, not a value a game holds",
+    "events.__all__": "what the package exports, not a value a game holds",
     "runner.scribe.Agents": "a type alias",
     "runner.scribe.Events": "a type alias",
     "runner.closing.Resolver": "a type alias",
