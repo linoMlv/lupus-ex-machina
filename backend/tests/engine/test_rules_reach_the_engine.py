@@ -83,6 +83,9 @@ def night_of(rules: GameRules) -> GameState:
     )
 
 
+# --- The rules travel in the state, and the engine reads them (D-068) --------
+
+
 def test_a_game_carries_the_rules_it_is_played_by() -> None:
     """Handed to the state once, rather than to every function that reads them."""
     assert night_of(FORCED).rules == FORCED
