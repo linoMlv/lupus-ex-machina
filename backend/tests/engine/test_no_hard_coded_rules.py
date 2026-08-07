@@ -34,13 +34,14 @@ ALLOWED: dict[str, str] = {
     "names.FIRST_NAMES": "the pool names are drawn from (D-042)",
     "visibility.SPECTATOR": "the omniscient recipient of D-009",
     "persistence.ENCODING": "how a file is written, not how a game is played",
-    "runner.DEFAULT_MAX_ROUNDS": (
+    "runner.game.DEFAULT_MAX_ROUNDS": (
         "the technical net of D-078, which must never become a rule of the game"
     ),
-    "runner.Agents": "a type alias",
-    "runner.Events": "a type alias",
-    "runner.Resolver": "a type alias",
-    "runner.Announcement": "a type alias",
+    "runner.__all__": "what the package exports, not a value a game holds",
+    "runner.scribe.Agents": "a type alias",
+    "runner.scribe.Events": "a type alias",
+    "runner.closing.Resolver": "a type alias",
+    "runner.closing.Announcement": "a type alias",
     "rng.Rng": "a type alias",
     "events.EventPayload": "a type alias",
     "intents.Intent": "a type alias",

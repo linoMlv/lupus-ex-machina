@@ -52,9 +52,11 @@ from lupus_ex_machina.engine.runner import (
     FloorClaim,
     GameDidNotEndError,
     GameResult,
-    _Run,
     play_game,
 )
+from lupus_ex_machina.engine.runner.acting import apply
+from lupus_ex_machina.engine.runner.day import play_day
+from lupus_ex_machina.engine.runner.scribe import Scribe
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.turn import Turn
@@ -388,9 +390,9 @@ def one_turn_of(turn: TakeTurn) -> tuple[GameState, PlayerId, tuple[Event, ...]]
     state = create_game(rng=create_rng(11)).entering(Phase.DAY, day=2)
     actor = state.living[0].id
     journal = Journal()
-    run = _Run({actor: TakesOneTurn(turn)}, journal, create_rng(1))
+    scribe = Scribe({actor: TakesOneTurn(turn)}, journal, create_rng(1))
 
-    return run._apply(state, actor, turn), actor, journal.events
+    return apply(scribe, state, actor, turn), actor, journal.events
 
 
 def kinds_of(events: tuple[Event, ...]) -> list[EventKind]:
@@ -477,9 +479,14 @@ async def a_day_of(
         player.id: Insistent(urgencies[player.seat]) for player in state.players
     }
     journal = Journal()
-    run = _Run(agents, journal, create_rng(3), claim=claim)
+    scribe = Scribe(agents, journal, create_rng(3))
 
-    await run.play_day(run.enter(state, Phase.DAY, day=2))
+    await play_day(
+        scribe,
+        scribe.enter(state, Phase.DAY, day=2),
+        control=DebateControl(),
+        claim=claim if claim is not None else FloorClaim(),
+    )
     return state, journal.events
 
 
@@ -544,9 +551,14 @@ async def a_day_played_by(
     """Play one debate day with the given agents, and hand back its journal."""
     state = create_game(rng=create_rng(12))
     journal = Journal()
-    run = _Run(agents, journal, create_rng(3), control=control, claim=claim)
+    scribe = Scribe(agents, journal, create_rng(3))
 
-    await run.play_day(run.enter(state, Phase.DAY, day=2))
+    await play_day(
+        scribe,
+        scribe.enter(state, Phase.DAY, day=2),
+        control=control if control is not None else DebateControl(),
+        claim=claim if claim is not None else FloorClaim(),
+    )
     return journal.events
 
 
@@ -689,9 +701,14 @@ async def a_tied_day(
         player.id: VotesFor(targets.get(player.seat)) for player in state.players
     }
     journal = Journal()
-    run = _Run(agents, journal, create_rng(3))
+    scribe = Scribe(agents, journal, create_rng(3))
 
-    closed, _ = await run.play_day(run.enter(state, Phase.DAY, day=2))
+    closed, _ = await play_day(
+        scribe,
+        scribe.enter(state, Phase.DAY, day=2),
+        control=DebateControl(),
+        claim=FloorClaim(),
+    )
     return closed, journal.events
 
 
@@ -759,9 +776,14 @@ async def a_settled_day(*, rules: GameRules | None = None) -> tuple[Event, ...]:
     hunted = state.players[1].id
     agents: dict[PlayerId, Agent] = {player.id: VotesFor(hunted) for player in state.players}
     journal = Journal()
-    run = _Run(agents, journal, create_rng(3))
+    scribe = Scribe(agents, journal, create_rng(3))
 
-    await run.play_day(run.enter(state, Phase.DAY, day=2))
+    await play_day(
+        scribe,
+        scribe.enter(state, Phase.DAY, day=2),
+        control=DebateControl(),
+        claim=FloorClaim(),
+    )
     return journal.events
 
 
@@ -896,13 +918,13 @@ async def test_a_claim_from_someone_who_can_no_longer_speak_is_dropped() -> None
         player.id: (VotesFor(None) if player.id == voted else Insistent(50))
         for player in state.players
     }
-    run = _Run(agents, journal := Journal(), create_rng(3), claim=claim)
-    opened = run.enter(state, Phase.DAY, day=2)
+    scribe = Scribe(agents, journal := Journal(), create_rng(3))
+    opened = scribe.enter(state, Phase.DAY, day=2)
 
     # That seat votes, gives up the floor, and only then presses the button.
-    opened = run._apply(opened, voted, TakeTurn(vote=Vote()))
+    opened = apply(scribe, opened, voted, TakeTurn(vote=Vote()))
     claim.claim(voted)
-    await run.play_day(opened)
+    await play_day(scribe, opened, control=DebateControl(), claim=claim)
 
     spoken = speakers_of(journal.events)
 

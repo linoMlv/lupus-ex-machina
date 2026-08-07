@@ -172,13 +172,14 @@ def test_a_table_may_keep_the_spreads_to_themselves() -> None:
 
 def test_a_settled_night_reveals_every_spread_it_collected() -> None:
     """Played end to end: the fact carries what each wolf actually put down."""
-    from lupus_ex_machina.engine.runner import _Run
+    from lupus_ex_machina.engine.runner.night import reveal_what_the_pack_weighed
+    from lupus_ex_machina.engine.runner.scribe import Scribe
 
     state = shared(shared(night(), WOLF, VILLAGER), OTHER_WOLF, VILLAGER)
     journal = Journal()
-    run = _Run({}, journal, create_rng(1))
+    scribe = Scribe({}, journal, create_rng(1))
 
-    run._reveal_what_the_pack_weighed(state)
+    reveal_what_the_pack_weighed(scribe, state)
 
     (fact,) = [
         event.payload for event in journal.events if isinstance(event.payload, PrioritiesRevealed)
@@ -188,12 +189,13 @@ def test_a_settled_night_reveals_every_spread_it_collected() -> None:
 
 def test_a_pack_kept_in_the_dark_is_shown_nothing_at_all() -> None:
     """The other half of the option, so neither branch goes untested."""
-    from lupus_ex_machina.engine.runner import _Run
+    from lupus_ex_machina.engine.runner.night import reveal_what_the_pack_weighed
+    from lupus_ex_machina.engine.runner.scribe import Scribe
 
     discreet = GameRules(information=InformationOptions(reveal_priorities_at_the_designation=False))
     state = shared(night(discreet), WOLF, VILLAGER)
     journal = Journal()
 
-    _Run({}, journal, create_rng(1))._reveal_what_the_pack_weighed(state)
+    reveal_what_the_pack_weighed(Scribe({}, journal, create_rng(1)), state)
 
     assert journal.events == ()

@@ -36,7 +36,10 @@ from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.roles import ROLES, RoleActionName, RoleName, Team
 from lupus_ex_machina.engine.rules import GameRules, NightOptions
-from lupus_ex_machina.engine.runner import GameResult, _Run, play_game
+from lupus_ex_machina.engine.runner import GameResult, play_game
+from lupus_ex_machina.engine.runner.game import open_the_game
+from lupus_ex_machina.engine.runner.night import play_night
+from lupus_ex_machina.engine.runner.scribe import Scribe
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.turn import Turn
@@ -355,10 +358,10 @@ async def test_the_witch_is_shown_the_prey_a_runoff_settled_on() -> None:
         OTHER_PREY: SilentAgent(),
     }
     journal = Journal()
-    run = _Run(agents, journal, create_rng(5))
-    opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
+    scribe = Scribe(agents, journal, create_rng(5))
+    opened = scribe.enter(open_the_game(scribe, state), Phase.DAY, day=1)
 
-    await run.play_night(run.enter(opened, Phase.RESOLUTION))
+    await play_night(scribe, scribe.enter(opened, Phase.RESOLUTION))
 
     healed = [
         event.payload
@@ -384,10 +387,10 @@ async def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
         OTHER_PREY: SilentAgent(),
     }
     journal = Journal()
-    run = _Run(agents, journal, create_rng(5))
-    opened = run.enter(run.open_the_game(state), Phase.DAY, day=1)
+    scribe = Scribe(agents, journal, create_rng(5))
+    opened = scribe.enter(open_the_game(scribe, state), Phase.DAY, day=1)
 
-    closed, _ = await run.play_night(run.enter(opened, Phase.RESOLUTION))
+    closed, _ = await play_night(scribe, scribe.enter(opened, Phase.RESOLUTION))
 
     assert not [event for event in journal.events if isinstance(event.payload, RunoffOpened)]
     assert len(closed.living) == len(A_TABLE_WITH_A_WITCH), "a tie spares everyone at once"
