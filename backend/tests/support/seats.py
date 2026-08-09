@@ -8,6 +8,7 @@ from lupus_ex_machina.llm.answers import (
     ReflectionAnswer,
     TurnAnswer,
 )
+from lupus_ex_machina.llm.context import ContextBudget
 from lupus_ex_machina.llm.fake import FakeCompletions
 from lupus_ex_machina.llm.personalities import personalities
 
@@ -29,10 +30,16 @@ def answering(schema: type, messages: object) -> str:
     return TurnAnswer(reasoning="Je regarde qui parle le plus.").model_dump_json()
 
 
-def seated(provider: FakeCompletions, personality: Personality = Personality.INTJ) -> LlmAgent:
+def seated(
+    provider: FakeCompletions,
+    personality: Personality = Personality.INTJ,
+    *,
+    budget: ContextBudget | None = None,
+) -> LlmAgent:
     return LlmAgent(
         completions=provider,
         personality=personalities()[personality],
         bidding_model="ministral-3b-latest",
         generation_model="mistral-small-latest",
+        budget=budget,
     )

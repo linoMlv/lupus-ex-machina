@@ -55,7 +55,13 @@ def main(argv: Sequence[str] | None = None, *, completions: Completions | None =
     configuration = GameConfiguration(rules=_rules_of(options))
     rng = create_rng(options.seed)
     state = create_game(configuration.rules, rng=rng)
-    agents = seat_agents(state, configuration.agents, completions=provider, seed=options.seed)
+    agents = seat_agents(
+        state,
+        configuration.agents,
+        completions=provider,
+        seed=options.seed,
+        system=configuration.system,
+    )
 
     _announce_table(state, agents, seed=options.seed)
     result = asyncio.run(play_game(state, dict(agents), rng=rng))
