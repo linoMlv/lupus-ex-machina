@@ -42,6 +42,17 @@ class Completions(Protocol):
         """Every request this provider was handed, in order."""
         ...  # pragma: no cover - a Protocol body carries no behaviour
 
+    @property
+    def seconds_spent(self) -> float:
+        """How long those requests took, in total.
+
+        Here for the same reason as :attr:`asked`: what a game costs in calls
+        *and* in seconds is an acceptance criterion (GL-7), and the provider is
+        what knows. A caller timing it from outside would be timing the display
+        as well.
+        """
+        ...  # pragma: no cover - a Protocol body carries no behaviour
+
     async def complete(
         self,
         *,

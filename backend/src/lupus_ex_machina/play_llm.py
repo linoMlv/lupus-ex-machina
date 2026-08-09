@@ -5,9 +5,10 @@ intervening. It is also the only thing in the project that reaches the network,
 which is why it is a command rather than a test — the suite stays offline, free
 and instant (GL-2, D-090).
 
-What it reports at the end is the budget of the game: how many calls it took,
-and how many of them were auctions. That is an acceptance criterion, not a
-curiosity (GL-7).
+What it reports at the end is the budget of the game: how many calls it took and
+how long they took, in total and per round. That is an acceptance criterion, not
+a curiosity (GL-7) — a call budget with no time against it says nothing about
+whether a game is watchable.
 
 Output is French because it is read on screen; the code around it is English
 (HR-6).
@@ -65,7 +66,7 @@ def main(argv: Sequence[str] | None = None, *, completions: Completions | None =
 
     _announce_table(state, agents, seed=options.seed)
     result = asyncio.run(play_game(state, dict(agents), rng=rng))
-    _report(result, asked=_calls_made(provider))
+    _report(result, asked=_calls_made(provider), seconds=provider.seconds_spent)
     return 0
 
 
@@ -129,11 +130,17 @@ def _announce_table(state: GameState, agents: Mapping[PlayerId, LlmAgent], *, se
     print()
 
 
-def _report(result: GameResult, *, asked: int) -> None:
-    """Report the end of the game, and what it cost to get there."""
+def _report(result: GameResult, *, asked: int, seconds: float) -> None:
+    """Report the end of the game, and what it cost to get there.
+
+    Calls *and* seconds, per round as well as in total: a call budget with no
+    time against it says nothing about whether a game is watchable, which is
+    what GL-7 asks to be able to judge.
+    """
     print(f"\n{OUTCOME_LABELS[result.outcome]} après {result.rounds} tours.")
     print(f"Intentions refusées par le moteur : {result.rejected_intents}.")
-    print(f"Appels aux modèles : {asked}.")
+    print(f"Appels aux modèles : {asked} en {seconds:.1f} secondes.")
+    print(f"Par tour : {asked / result.rounds:.0f} appels, {seconds / result.rounds:.1f} secondes.")
     print()
 
     print("Rôles :")

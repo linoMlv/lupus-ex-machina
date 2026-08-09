@@ -45,6 +45,25 @@ def test_a_whole_game_is_played_and_reported(capsys: pytest.CaptureFixture[str])
     assert "Appels aux modèles" in printed, "the budget of a game is reported (GL-7)"
 
 
+def test_what_a_game_cost_in_calls_and_in_seconds_is_reported(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exit criterion 7 of J7: calls *and* latency, measured and written down.
+
+    Both, and read off the provider that knows them (GL-7): a budget of calls
+    with no time against it says nothing about whether a game is watchable, and
+    a latency nobody prints is a measurement nobody makes.
+    """
+    main(
+        ["--players", "6", "--seed", "4", "--forced-designation"],
+        completions=FakeCompletions(invent=answering),
+    )
+
+    printed = capsys.readouterr().out
+    assert "Appels aux modèles" in printed
+    assert "secondes" in printed.lower(), "the time those calls took"
+
+
 def test_the_table_it_deals_is_announced_with_its_temperaments(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

@@ -36,6 +36,8 @@ class FakeCompletions:
         self._script = list(script)
         self._invent = invent
         self.asked: list[Asked] = []
+        self.seconds_spent = 0.0
+        """Nothing, and truthfully so: answering from a script reaches nobody."""
 
     async def complete(
         self,
