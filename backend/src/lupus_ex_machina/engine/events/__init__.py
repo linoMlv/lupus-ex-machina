@@ -28,11 +28,11 @@ from lupus_ex_machina.engine.events.fact import EventKind, Fact
 from lupus_ex_machina.engine.events.night import (
     NightPowerUsed,
     NightResolved,
+    PackRunoffOpened,
     PowerSpent,
     PrioritiesRevealed,
     PriorityShared,
     RevealedShare,
-    RunoffOpened,
     SeerFindingAnnounced,
     SeerInspected,
 )
@@ -54,6 +54,7 @@ from lupus_ex_machina.engine.events.voting import (
     BallotsRevealed,
     ForcedVoteReason,
     RevealedBallot,
+    RunoffOpened,
     VoteForced,
     VoteResolved,
 )
@@ -75,6 +76,7 @@ EventPayload = Annotated[
     | SeerFindingAnnounced
     | PriorityShared
     | RunoffOpened
+    | PackRunoffOpened
     | VoteResolved
     | NightResolved
     | RoleRevealed
@@ -139,6 +141,7 @@ __all__ = [
     "NotebookEntryDropped",
     "NotebookEntryRecorded",
     "PackRevealed",
+    "PackRunoffOpened",
     "PhaseEntered",
     "PlayerSeated",
     "PowerSpent",

@@ -32,6 +32,7 @@ class EventKind(StrEnum):
     SEER_FINDING_ANNOUNCED = "seer_finding_announced"
     PRIORITY_SHARED = "priority_shared"
     RUNOFF_OPENED = "runoff_opened"
+    PACK_RUNOFF_OPENED = "pack_runoff_opened"
     VOTE_RESOLVED = "vote_resolved"
     NIGHT_RESOLVED = "night_resolved"
     ROLE_REVEALED = "role_revealed"

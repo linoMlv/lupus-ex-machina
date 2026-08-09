@@ -8,7 +8,7 @@ from lupus_ex_machina.engine.bidding import Bid
 from lupus_ex_machina.engine.events import (
     Event,
     NightPowerUsed,
-    RunoffOpened,
+    PackRunoffOpened,
 )
 from lupus_ex_machina.engine.intents import (
     IntentKind,
@@ -140,5 +140,5 @@ async def test_a_pack_whose_tie_is_never_put_back_takes_nobody() -> None:
 
     closed, _ = await play_night(scribe, scribe.enter(opened, Phase.RESOLUTION))
 
-    assert not [event for event in journal.events if isinstance(event.payload, RunoffOpened)]
+    assert not [event for event in journal.events if isinstance(event.payload, PackRunoffOpened)]
     assert len(closed.living) == len(A_TABLE_WITH_A_WITCH), "a tie spares everyone at once"

@@ -9,10 +9,10 @@ tractable at all.
 from lupus_ex_machina.engine.events import (
     EventPayload,
     NightResolved,
+    PackRunoffOpened,
     PowerSpent,
     PrioritiesRevealed,
     RevealedShare,
-    RunoffOpened,
     SeerFindingAnnounced,
     SeerInspected,
 )
@@ -96,7 +96,7 @@ async def _settle_what_the_pack_designates(scribe: Scribe, state: GameState) -> 
 async def _hold_a_runoff(scribe: Scribe, state: GameState, tied: tuple[PlayerId, ...]) -> GameState:
     """Put the tied prey back to the pack, once, without a word (D-050, D-062)."""
     state = state.reopened_for_runoff(tied)
-    scribe.record(RunoffOpened(targets=tied), at=state)
+    scribe.record(PackRunoffOpened(targets=tied), at=state)
 
     for wolf in night_callers(state):
         if wolf.team is Team.WEREWOLVES:

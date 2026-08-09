@@ -88,6 +88,28 @@ class VoteForced(Fact):
         return Visibility.public()
 
 
+class RunoffOpened(Fact):
+    """The day tied, so the table is asked again about the ex aequo (D-050, D-062).
+
+    Public, because the second round is organised *by announcing the tie*: a
+    table put back to the vote without being told why would revote in the dark,
+    and a journal that kept the reason to itself would be lying about what the
+    table has learnt.
+
+    Its night counterpart is a fact of its own (:class:`~.night.PackRunoffOpened`),
+    addressed to the pack alone — one act, two facts, because the rules speak to
+    two audiences (D-091, after D-013 and D-051).
+    """
+
+    kind: Literal[EventKind.RUNOFF_OPENED] = EventKind.RUNOFF_OPENED
+    targets: tuple[PlayerId, ...]
+
+    @property
+    def audience(self) -> Visibility:
+        """Public: a tie is announced to the table it is put back to (D-050)."""
+        return Visibility.public()
+
+
 class BallotsRevealed(Fact):
     """The count, laid out for the table (D-013, D-051).
 

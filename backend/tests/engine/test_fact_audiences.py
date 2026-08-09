@@ -5,6 +5,7 @@ from lupus_ex_machina.engine.events import (
     NightResolved,
     NotebookEntryRecorded,
     PackRevealed,
+    PackRunoffOpened,
     PrioritiesRevealed,
     PriorityShared,
     PrivateReasoningRecorded,
@@ -45,10 +46,23 @@ def test_the_pack_channel_never_leaves_the_pack() -> None:
     for spoken in (
         PriorityShared(actor=WOLF, allocations=(A_FEW_POINTS,)),
         PrioritiesRevealed(shares=(A_SPREAD,)),
-        RunoffOpened(targets=(VILLAGER,)),
+        PackRunoffOpened(targets=(VILLAGER,)),
         PackRevealed(members=(WOLF,)),
     ):
         assert not spoken.audience.reaches(villager)
+
+
+def test_a_second_round_is_told_to_whoever_is_asked_to_vote_again() -> None:
+    """The same tie, two facts, because two audiences are asked (D-091).
+
+    The day announces its runoff (D-050); the pack settles its own in the dark
+    (D-062). Reading the audience off the phase instead would put the visibility
+    of a fact somewhere other than the fact, which is what D-009 refuses.
+    """
+    villager = Recipient(player=VILLAGER, role=RoleName.VILLAGER)
+
+    assert RunoffOpened(targets=(VILLAGER,)).audience == Visibility.public()
+    assert not PackRunoffOpened(targets=(VILLAGER,)).audience.reaches(villager)
 
 
 def test_a_spread_is_its_own_wolf_s_until_the_designation_is_settled() -> None:

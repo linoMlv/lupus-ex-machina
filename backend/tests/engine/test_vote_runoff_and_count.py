@@ -4,6 +4,8 @@ The two moments a vote produces something the table reacts to: a second
 round between the ex aequo, and who named whom (D-013, D-051, D-082).
 """
 
+from collections.abc import Iterable
+
 from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.events import (
     BallotsRevealed,
@@ -11,10 +13,11 @@ from lupus_ex_machina.engine.events import (
     RunoffOpened,
     VoteResolved,
 )
-from lupus_ex_machina.engine.journal import Journal
+from lupus_ex_machina.engine.journal import Journal, project_journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
+from lupus_ex_machina.engine.roles import RoleName
 from lupus_ex_machina.engine.rules import (
     GameRules,
     InformationOptions,
@@ -28,7 +31,7 @@ from lupus_ex_machina.engine.runner.day import play_day
 from lupus_ex_machina.engine.runner.scribe import Scribe
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.engine.visibility import VisibilityScope
+from lupus_ex_machina.engine.visibility import Recipient, VisibilityScope
 from support.agents import VotesFor
 from support.games import (
     six_seats,
@@ -57,6 +60,11 @@ async def a_tied_day(
     return closed, journal.events
 
 
+def runoffs_in(events: Iterable[Event]) -> list[RunoffOpened]:
+    """The reopenings a stream of events carries, journal or projection alike."""
+    return [event.payload for event in events if isinstance(event.payload, RunoffOpened)]
+
+
 async def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> None:
     """Three against three: the table is asked again, and only about those two."""
     state = create_game(six_seats(), rng=create_rng(12))
@@ -64,7 +72,7 @@ async def test_a_tied_vote_opens_a_runoff_between_the_players_it_tied_on() -> No
 
     _, events = await a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
 
-    opened = [event.payload for event in events if isinstance(event.payload, RunoffOpened)]
+    opened = runoffs_in(events)
 
     assert opened, "the tie was put back to the table"
     assert set(opened[0].targets) == {first, second}
@@ -79,7 +87,7 @@ async def test_a_runoff_is_held_once_and_spares_everyone_if_it_ties_again() -> N
         {0: second, 1: first, 2: first, 3: second, 4: first, 5: second}
     )
 
-    opened = [event.payload for event in events if isinstance(event.payload, RunoffOpened)]
+    opened = runoffs_in(events)
     resolved = [event.payload for event in events if isinstance(event.payload, VoteResolved)]
 
     assert len(opened) == 1, "a runoff is held once, never twice"
@@ -98,8 +106,30 @@ async def test_a_table_may_be_configured_to_let_a_tie_spare_everyone_at_once() -
         rules=settled_at_once,
     )
 
-    assert not [event for event in events if isinstance(event.payload, RunoffOpened)]
+    assert not runoffs_in(events)
     assert len(closed.living) == 6, "and a tie still spares everyone"
+
+
+async def test_the_table_is_told_why_it_is_being_asked_again() -> None:
+    """A day's runoff is announced to everyone, ex aequo or not (D-050, D-091).
+
+    Read from a villager's *projected* journal rather than from the journal
+    itself: a fact the engine records but the filter withholds would leave the
+    table revoting without ever being told why, and a spectator re-reading that
+    journal would not find the reason either.
+    """
+    state = create_game(six_seats(), rng=create_rng(12))
+    first, second = state.players[0].id, state.players[1].id
+    villager = next(player for player in state.players if player.role is RoleName.VILLAGER)
+
+    _, events = await a_tied_day({0: second, 1: first, 2: first, 3: second, 4: first, 5: second})
+
+    assert runoffs_in(events), "the day did tie, so there is something to be told about"
+
+    told = runoffs_in(project_journal(events, Recipient.of(villager)))
+
+    assert told, "the villager is told the vote was reopened"
+    assert set(told[0].targets) == {first, second}
 
 
 async def test_a_vote_that_settles_needs_no_runoff() -> None:
@@ -108,7 +138,7 @@ async def test_a_vote_that_settles_needs_no_runoff() -> None:
 
     closed, events = await a_tied_day(dict.fromkeys(range(6), hunted))
 
-    assert not [event for event in events if isinstance(event.payload, RunoffOpened)]
+    assert not runoffs_in(events)
     assert not closed.is_alive(hunted)
 
 

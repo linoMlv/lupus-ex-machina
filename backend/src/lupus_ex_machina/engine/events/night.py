@@ -131,15 +131,21 @@ class PrioritiesRevealed(Fact):
         return Visibility.for_role(RoleName.WEREWOLF)
 
 
-class RunoffOpened(Fact):
-    """The pack tied, so a silent second round is held between the ex aequo (D-062)."""
+class PackRunoffOpened(Fact):
+    """The pack tied, so a silent second round is held between the ex aequo (D-062).
 
-    kind: Literal[EventKind.RUNOFF_OPENED] = EventKind.RUNOFF_OPENED
+    The night's counterpart to the day's :class:`~.voting.RunoffOpened`, and a
+    fact of its own rather than the same one read differently: the two are held
+    before two audiences, and D-009 has an audience belong to a fact rather than
+    to the phase it happens in (D-091).
+    """
+
+    kind: Literal[EventKind.PACK_RUNOFF_OPENED] = EventKind.PACK_RUNOFF_OPENED
     targets: tuple[PlayerId, ...]
 
     @property
     def audience(self) -> Visibility:
-        """The pack: the tie happened on its own channel."""
+        """The pack: the tie happened on its own channel, in the dark."""
         return Visibility.for_role(RoleName.WEREWOLF)
 
 

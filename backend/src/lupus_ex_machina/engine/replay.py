@@ -32,6 +32,7 @@ from lupus_ex_machina.engine.events import (
     NotebookEntryDropped,
     NotebookEntryRecorded,
     PackRevealed,
+    PackRunoffOpened,
     PhaseEntered,
     PlayerSeated,
     PowerSpent,
@@ -124,7 +125,10 @@ class _Replay:
                     addressed=speech.addressed,
                     accused=speech.accused,
                 )
-            case RunoffOpened() as runoff:
+            case RunoffOpened() | PackRunoffOpened() as runoff:
+                # Two facts, one effect: the day announces its runoff and the
+                # night keeps its own to the pack (D-091), but either reopens
+                # the same round on the same targets.
                 self._state = self._running().reopened_for_runoff(runoff.targets)
             case VoteResolved() as vote:
                 self._close_round(() if vote.eliminated is None else (vote.eliminated,))
