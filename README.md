@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 à 6 sur 12 terminés.**
+**Jalons 1 à 7 sur 12 terminés.**
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -176,7 +176,19 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   Aucune valeur de jeu ne reste écrite dans le code — un test balaie le moteur pour s'en assurer — et
   une configuration se sauvegarde, se recharge et se partage.
 
-La couche LLM et les agents (jalon 7) sont **en cours** : une partie complète se joue déjà avec de vrais modèles en console, il reste le budget de contexte à écrire.
+- **J7 — La couche LLM et les agents.** Une partie entière se joue avec de vrais modèles derrière
+  chaque siège, sans personne pour intervenir. Chaque agent ne reçoit que ce que son rôle l'autorise
+  à savoir, sa réponse est validée avant d'atteindre le moteur, et un coup illégal est refusé plutôt
+  que corrigé en douce. Ce qu'un joueur dit voyage dans un bloc étiqueté dont on ne peut pas
+  s'échapper : une tentative d'injection reste lisible comme une parole, jamais comme une consigne.
+  Seize tempéraments distincts ne colorent pas seulement le style mais le comportement — un
+  extraverti se bat plus souvent pour la parole. Chaque siège tourne sur deux modèles, un rapide pour
+  les enchères et un capable pour la parole, ce qui est exactement ce qui rend une partie abordable.
+  Le contexte remis à un modèle est mesuré avant d'être envoyé et n'est raccourci qu'au moment où il
+  dépasserait sa fenêtre — ce qui, mesure à l'appui, n'arrive jamais : une partie bavarde de huit
+  joueurs plafonne à un dixième de la fenêtre courante.
+
+Le prochain jalon est l'API et le temps réel (J8), puis la scène 3D.
 
 ---
 
@@ -200,6 +212,18 @@ make play SEED=7 PLAYERS=6     # autre graine, autre effectif
 
 La commande annonce la table, joue la partie, puis affiche le camp vainqueur et les rôles de chacun.
 Une même graine rejoue exactement la même partie.
+
+Pour la faire jouer par de **vrais modèles**, il faut une clé — `LUPUS_LLM_API_KEY` dans votre
+`.env`, en partant de `.env.example`. C'est la seule commande du projet qui atteint le réseau ; la
+suite de tests, elle, reste hors ligne.
+
+```bash
+make play-llm                  # 8 joueurs, graine 1
+make play-llm SEED=7 PLAYERS=6
+```
+
+À la fin, elle dit ce que la partie a coûté : le nombre d'appels aux modèles et le temps qu'ils ont
+pris, en tout et par tour.
 
 Pour développer, deux processus : l'API d'un côté, Vite de l'autre — le serveur de développement
 relaie vers l'API les chemins qui lui appartiennent.
