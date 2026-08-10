@@ -20,7 +20,7 @@ un GLB n'est pas servi avec le type MIME `model/gltf-binary`.
 
 ## 2. Variables d'environnement
 
-Toutes les variables sont préfixées par `LUPUS_`. Toutes ont un défaut utilisable — à une exception près, `LUPUS_LLM_API_KEY`, sans laquelle une partie ne peut pas être jouée par des modèles. L'image fixe déjà
+Toutes les variables sont préfixées par `LUPUS_`. Toutes ont un défaut utilisable — à deux exceptions près : `LUPUS_PASSWORD`, sans lequel **personne ne peut entrer**, et `LUPUS_LLM_API_KEY`, sans laquelle aucune partie ne peut être jouée par des modèles. L'image fixe déjà
 les valeurs nécessaires à son propre agencement. Le modèle complet est dans
 [`.env.example`](../.env.example).
 
@@ -31,6 +31,8 @@ les valeurs nécessaires à son propre agencement. Le modèle complet est dans
 | `LUPUS_LOG_LEVEL` | `info` | `critical`, `error`, `warning`, `info`, `debug` ou `trace`. |
 | `LUPUS_FRONTEND_DIST` | `/app/frontend/dist` | Interface compilée. Si le chemin est absent, l'API démarre quand même mais **ne sert plus l'interface**. |
 | `LUPUS_MODELS_DIR` | `/app/assets` | Modèles GLB exposés sous `/models`. |
+| `LUPUS_PASSWORD` | *(vide)* | Mot de passe derrière lequel l'application est cachée (D-045). **Laissé vide, personne n'entre** : oublier de le définir ferme la porte plutôt que de l'ouvrir. Gardé en clair, il n'y a qu'un utilisateur et vous détenez déjà le secret. |
+| `LUPUS_SECRET_KEY` | *(tirée au démarrage)* | Clé de signature du cookie de session. Non définie, une clé est tirée à chaque démarrage, ce qui déconnecte tout le monde au redémarrage. La définir pour rester connecté d'un déploiement à l'autre — n'importe quelle longue chaîne aléatoire convient. |
 | `LUPUS_LLM_API_KEY` | *(vide)* | Clé du fournisseur compatible OpenAI. **Le seul secret du projet** : à définir dans la plateforme, jamais dans l'image ni dans le dépôt. Sans elle, aucune partie ne peut être jouée par des modèles. |
 | `LUPUS_LLM_BASE_URL` | `https://api.mistral.ai/v1` | Endpoint du fournisseur. Mistral est consommé par son API compatible OpenAI ; tout endpoint compatible convient. |
 

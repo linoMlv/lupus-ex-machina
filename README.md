@@ -140,7 +140,7 @@ vignettage se referme — et l'on assiste à ses pensées.
 La phase de conception est terminée — architecture, règles, direction artistique, plan
 d'implémentation en douze jalons. Le développement suit une approche **TDD stricte**.
 
-**Jalons 1 à 7 sur 12 terminés.**
+**Jalons 1 à 7 sur 12 terminés**, le huitième bien engagé.
 
 - **J1 — Fondations.** Le squelette applicatif répond, l'interface et les modèles 3D sont servis,
   l'image Docker se construit et se vérifie d'une seule commande.
@@ -188,7 +188,18 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   dépasserait sa fenêtre — ce qui, mesure à l'appui, n'arrive jamais : une partie bavarde de huit
   joueurs plafonne à un dixième de la fenêtre courante.
 
-Le prochain jalon est l'API et le temps réel (J8), puis la scène 3D.
+- **J8 — L'API et le temps réel** *(en cours)*. L'application se cache derrière un mot de passe, et
+  ce qu'une partie produit se suit en direct. Une partie se distribue d'abord et se démarre ensuite :
+  tant que personne ne l'a lancée, aucun modèle n'est sollicité. Ce qui part vers un client est
+  **filtré avant d'être émis**, jamais masqué à l'affichage, et un client dit simplement où il en
+  était pour recevoir la suite — le même chemin qu'il arrive pour la première fois ou qu'il
+  revienne. Un test capture **tout** ce qui transite vers un joueur sur une partie entière et le
+  compare à ce qu'il avait le droit de voir : une fuite sous n'importe quel nom ferait diverger les
+  deux. La partie ne court pas devant qui la regarde — elle prend quelques tours d'avance, un seul
+  quand vous jouez, si bien qu'un bouton de parole est toujours lu avant le tour suivant. Et quand le
+  fournisseur fait attendre, il le dit : une scène qui s'arrête l'explique au lieu de sembler figée.
+
+Il reste à J8 le siège du joueur humain. Vient ensuite la scène 3D.
 
 ---
 
