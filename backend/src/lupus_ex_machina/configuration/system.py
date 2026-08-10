@@ -50,6 +50,14 @@ class SystemOptions(BaseModel):
         gt=0.0,
         description="Attente maximale entre deux tentatives, une fois le doublement arrêté.",
     )
+    backoff_attempts: int = Field(
+        default=8,
+        ge=1,
+        description="Nombre de tentatives avant d'abandonner une requête refusée pour débit.",
+    )
+    """A policy whose delays are settings and whose patience is not would be half
+    a setting — and it is the half that decides whether a game stops (D-092)."""
+
     record_journal_to: Path | None = Field(
         default=None,
         description="Fichier où écrire le journal de la partie. Vide, il reste en mémoire.",

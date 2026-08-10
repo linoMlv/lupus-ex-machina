@@ -75,5 +75,6 @@ def test_system_defaults_to_a_short_first_backoff_and_no_compaction() -> None:
         "context_margin": 0.8,
         "backoff_first_delay_seconds": 1.0,
         "backoff_maximum_delay_seconds": 60.0,
+        "backoff_attempts": 8,
         "record_journal_to": None,
     }

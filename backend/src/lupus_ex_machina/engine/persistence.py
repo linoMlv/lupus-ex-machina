@@ -22,6 +22,10 @@ from lupus_ex_machina.engine.events import Event
 
 ENCODING = "utf-8"
 
+#: How the instant of a game is written into the name of its archive. Compact
+#: and sortable, and without the colons a file name may not carry.
+ARCHIVE_INSTANT = "%Y%m%dT%H%M%S"
+
 
 class JournalFileError(EngineError):
     """A journal that cannot be read from where it was expected."""
@@ -36,6 +40,28 @@ def write_journal(path: Path, events: Iterable[Event]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = "".join(f"{event.model_dump_json()}\n" for event in events)
     path.write_text(lines, encoding=ENCODING)
+
+
+def archive_journal(directory: Path, events: Iterable[Event], *, seed: int) -> Path:
+    """File the journal of a finished game, beside the ones before it (D-104).
+
+    A game is archived under a name of its own because :func:`write_journal`
+    replaces what it is handed and one file holds one game: written to a fixed
+    path, every game would erase the last.
+
+    The name is the seed — which replays the game — and the instant it opened,
+    read off the **first fact** rather than from a clock. The journal already
+    carries the moment each of its facts happened, injected and replayable, so
+    naming an archive needs no new dependency on the time of day.
+    """
+    recorded = tuple(events)
+    if not recorded:
+        raise JournalFileError("There is no game to archive: the journal holds no fact")
+
+    opened = recorded[0].recorded_at.strftime(ARCHIVE_INSTANT)
+    path = directory / f"game-{seed}-{opened}.jsonl"
+    write_journal(path, recorded)
+    return path
 
 
 def read_journal(path: Path) -> tuple[Event, ...]:

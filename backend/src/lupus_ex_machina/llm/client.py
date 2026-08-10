@@ -71,6 +71,15 @@ class ChatClient:
         self.asked: list[Asked] = []
         self.seconds_spent = 0.0
 
+    @property
+    def retries(self) -> RetryPolicy:
+        """How this client waits out a provider that says there are too many.
+
+        Readable like :attr:`asked` and :attr:`seconds_spent`: a policy that
+        could only be checked by waiting through it could not be checked at all.
+        """
+        return self._retries
+
     async def complete(
         self,
         *,

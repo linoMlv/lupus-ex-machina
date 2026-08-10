@@ -436,6 +436,13 @@
           "title": "Backoff Maximum Delay Seconds",
           "type": "number"
         },
+        "backoff_attempts": {
+          "default": 8,
+          "description": "Nombre de tentatives avant d'abandonner une requête refusée pour débit.",
+          "minimum": 1,
+          "title": "Backoff Attempts",
+          "type": "integer"
+        },
         "record_journal_to": {
           "anyOf": [
             {

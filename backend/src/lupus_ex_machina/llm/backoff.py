@@ -14,6 +14,8 @@ from collections.abc import Iterator
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lupus_ex_machina.configuration.system import SystemOptions
+
 
 class RetryPolicy(BaseModel):
     """What to do about a request a provider refused for rate reasons."""
@@ -45,3 +47,19 @@ class RetryPolicy(BaseModel):
         for _ in range(self.attempts - 1):
             yield min(delay, self.maximum_delay_seconds)
             delay = min(delay * 2, self.maximum_delay_seconds)
+
+
+def retries_for(options: SystemOptions) -> RetryPolicy:
+    """The policy those settings describe (D-092).
+
+    The one way a client is given its waits. Before this existed the settings
+    were declared, validated and documented while the client built itself a
+    policy out of its own defaults — a form control that changed nothing, which
+    is what J6 forbids. Same shape as :func:`context.budget_for`: the
+    configuration is read once, in the module that owns what it configures.
+    """
+    return RetryPolicy(
+        first_delay_seconds=options.backoff_first_delay_seconds,
+        maximum_delay_seconds=options.backoff_maximum_delay_seconds,
+        attempts=options.backoff_attempts,
+    )

@@ -5,9 +5,14 @@ wiring — settings read, table seated, game played, report printed — and not 
 provider. A test that reached the network would cost money and fail on a train.
 """
 
+from pathlib import Path
+
 import pytest
 
 from lupus_ex_machina.config import Settings
+from lupus_ex_machina.configuration.system import SystemOptions
+from lupus_ex_machina.engine.persistence import read_journal
+from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.llm.answers import BidAnswer, ReflectionAnswer, TurnAnswer
 from lupus_ex_machina.llm.fake import FakeCompletions
 from lupus_ex_machina.llm.personalities import personalities
@@ -84,8 +89,51 @@ def test_a_provider_is_built_from_the_settings_when_a_key_is_there() -> None:
     """Building a client reaches nobody, so this is testable without a network."""
     settings = Settings(llm_api_key="clef-de-test", llm_base_url="https://ailleurs.test/v1")
 
-    assert configured_provider(settings) is not None
+    assert configured_provider(settings, SystemOptions()) is not None
 
 
 def test_no_provider_is_built_without_a_key() -> None:
-    assert configured_provider(Settings()) is None
+    assert configured_provider(Settings(), SystemOptions()) is None
+
+
+def test_a_finished_game_is_archived_where_the_configuration_asks(tmp_path: Path) -> None:
+    """J8.0.3, D-093 — the setting existed and nothing honoured it either.
+
+    Written once the game is over, which is what makes it an archive and not a
+    resume: what it is for is reading back a game that was played against real
+    models, long after the process that played it.
+    """
+    main(
+        ["--players", "6", "--seed", "4", "--forced-designation", "--archive-to", str(tmp_path)],
+        completions=FakeCompletions(invent=answering),
+    )
+
+    archived = list(tmp_path.glob("*.jsonl"))
+    assert len(archived) == 1
+    assert replay(read_journal(archived[0])).players, "and it reads back as the game it was"
+
+
+def test_nothing_is_written_when_no_archive_is_asked_for(tmp_path: Path) -> None:
+    """The default is in memory: a game must not litter a disk nobody pointed at."""
+    main(
+        ["--players", "6", "--seed", "4", "--forced-designation"],
+        completions=FakeCompletions(invent=answering),
+    )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_provider_waits_the_way_the_game_is_configured() -> None:
+    """J8.0, D-092 — the derivation exists; this is what makes somebody call it.
+
+    The defect it guards against is not a wrong value, it is a value nobody
+    reads: `retries_for` could be perfectly correct and never invoked, which is
+    precisely the state J7 was left in.
+    """
+    provider = configured_provider(
+        Settings(llm_api_key="clef-de-test"),
+        SystemOptions(backoff_first_delay_seconds=9.0),
+    )
+
+    assert provider is not None
+    assert provider.retries.first_delay_seconds == 9.0

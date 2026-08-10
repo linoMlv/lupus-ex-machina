@@ -18,9 +18,12 @@ import argparse
 import asyncio
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from lupus_ex_machina.config import Settings
 from lupus_ex_machina.configuration.schema import GameConfiguration
+from lupus_ex_machina.configuration.system import SystemOptions
+from lupus_ex_machina.engine.persistence import archive_journal
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.rules import GameRules, NightOptions, TableOptions
@@ -29,6 +32,7 @@ from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.labels import OUTCOME_LABELS, ROLE_LABELS
 from lupus_ex_machina.llm.agent import LlmAgent
+from lupus_ex_machina.llm.backoff import retries_for
 from lupus_ex_machina.llm.client import ChatClient
 from lupus_ex_machina.llm.completions import Completions
 from lupus_ex_machina.llm.table import seat_agents
@@ -44,7 +48,15 @@ def main(argv: Sequence[str] | None = None, *, completions: Completions | None =
     settings.
     """
     options = _parse_arguments(argv)
-    provider = completions if completions is not None else configured_provider(Settings())
+    configuration = GameConfiguration(
+        rules=_rules_of(options),
+        system=SystemOptions(record_journal_to=options.archive_to),
+    )
+    provider = (
+        completions
+        if completions is not None
+        else configured_provider(Settings(), configuration.system)
+    )
     if provider is None:
         print(
             "Aucune clé d'API configurée. Renseignez LUPUS_LLM_API_KEY "
@@ -53,7 +65,6 @@ def main(argv: Sequence[str] | None = None, *, completions: Completions | None =
         )
         return 1
 
-    configuration = GameConfiguration(rules=_rules_of(options))
     rng = create_rng(options.seed)
     state = create_game(configuration.rules, rng=rng)
     agents = seat_agents(
@@ -67,18 +78,40 @@ def main(argv: Sequence[str] | None = None, *, completions: Completions | None =
     _announce_table(state, agents, seed=options.seed)
     result = asyncio.run(play_game(state, dict(agents), rng=rng))
     _report(result, asked=_calls_made(provider), seconds=provider.seconds_spent)
+    _archive(result, configuration.system, seed=options.seed)
     return 0
 
 
-def configured_provider(settings: Settings) -> Completions | None:
+def _archive(result: GameResult, system: SystemOptions, *, seed: int) -> None:
+    """File the journal of the game, when the configuration asked for it (D-093).
+
+    Once the game is over, never along the way: an archive is for reading a
+    finished game back, and writing at every fact would put a disk in the hot
+    path of a turn for a case nothing asks for.
+    """
+    if system.record_journal_to is None:
+        return
+    written = archive_journal(system.record_journal_to, result.journal, seed=seed)
+    print(f"Journal de la partie : {written}")
+
+
+def configured_provider(settings: Settings, system: SystemOptions) -> ChatClient | None:
     """The client the settings describe, or nothing when there is no key (D-090).
 
     Building it reaches nobody — a client is a base URL and a header until it is
     asked something — which is what lets this be tested without a network.
+
+    Where it calls comes from the environment and how it waits comes from the
+    game (D-092): a provider is one of those and a policy is the other, and
+    keeping them apart is what stopped the waits from being read at all.
     """
     if settings.llm_api_key is None:
         return None
-    return ChatClient(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    return ChatClient(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        retries=retries_for(system),
+    )
 
 
 def _rules_of(options: argparse.Namespace) -> GameRules:
@@ -102,6 +135,12 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "--forced-designation",
         action="store_true",
         help="la meute doit repartir avec une victime (sinon une partie peut ne pas avancer)",
+    )
+    parser.add_argument(
+        "--archive-to",
+        type=Path,
+        default=None,
+        help="répertoire où déposer le journal de la partie une fois terminée",
     )
     return parser.parse_args(argv)
 

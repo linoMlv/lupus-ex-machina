@@ -35,6 +35,7 @@ ALLOWED: dict[str, str] = {
     "names.FIRST_NAMES": "the pool names are drawn from (D-042)",
     "visibility.SPECTATOR": "the omniscient recipient of D-009",
     "persistence.ENCODING": "how a file is written, not how a game is played",
+    "persistence.ARCHIVE_INSTANT": "how an archive is named, not how a game is played",
     "runner.game.DEFAULT_MAX_ROUNDS": (
         "the technical net of D-078, which must never become a rule of the game"
     ),
