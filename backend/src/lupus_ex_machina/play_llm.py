@@ -32,9 +32,8 @@ from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.labels import OUTCOME_LABELS, ROLE_LABELS
 from lupus_ex_machina.llm.agent import LlmAgent
-from lupus_ex_machina.llm.backoff import retries_for
-from lupus_ex_machina.llm.client import ChatClient
 from lupus_ex_machina.llm.completions import Completions
+from lupus_ex_machina.llm.provider import configured_provider
 from lupus_ex_machina.llm.table import seat_agents
 
 DEFAULTS = TableOptions()
@@ -93,25 +92,6 @@ def _archive(result: GameResult, system: SystemOptions, *, seed: int) -> None:
         return
     written = archive_journal(system.record_journal_to, result.journal, seed=seed)
     print(f"Journal de la partie : {written}")
-
-
-def configured_provider(settings: Settings, system: SystemOptions) -> ChatClient | None:
-    """The client the settings describe, or nothing when there is no key (D-090).
-
-    Building it reaches nobody — a client is a base URL and a header until it is
-    asked something — which is what lets this be tested without a network.
-
-    Where it calls comes from the environment and how it waits comes from the
-    game (D-092): a provider is one of those and a policy is the other, and
-    keeping them apart is what stopped the waits from being read at all.
-    """
-    if settings.llm_api_key is None:
-        return None
-    return ChatClient(
-        base_url=settings.llm_base_url,
-        api_key=settings.llm_api_key,
-        retries=retries_for(system),
-    )
 
 
 def _rules_of(options: argparse.Namespace) -> GameRules:

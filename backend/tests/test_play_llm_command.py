@@ -16,7 +16,8 @@ from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.llm.answers import BidAnswer, ReflectionAnswer, TurnAnswer
 from lupus_ex_machina.llm.fake import FakeCompletions
 from lupus_ex_machina.llm.personalities import personalities
-from lupus_ex_machina.play_llm import configured_provider, main
+from lupus_ex_machina.llm.provider import configured_provider
+from lupus_ex_machina.play_llm import main
 
 
 def answering(schema: type, messages: object) -> str:
