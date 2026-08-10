@@ -9,6 +9,7 @@ from lupus_ex_machina.hosting.game import HostedGame
 from lupus_ex_machina.hosting.host import GameHost
 from lupus_ex_machina.llm.completions import Completions
 from lupus_ex_machina.llm.fake import FakeCompletions
+from lupus_ex_machina.llm.throttling import Waiting
 from support.seats import answering
 
 #: Six players and a pack made to leave with a victim, so a table of models that
@@ -26,8 +27,12 @@ def a_completions() -> Completions:
     return FakeCompletions(invent=answering)
 
 
-def a_provider(system: SystemOptions) -> Completions:
-    """The same, as the host asks for it: built once the game is known (D-092)."""
+def a_provider(system: SystemOptions, waiting: Waiting) -> Completions:
+    """The same, as the host asks for it: once the game and its audience exist.
+
+    Two things arrive with the game rather than with the server: how the client
+    waits (D-092), and who to tell that it is waiting (D-066).
+    """
     return a_completions()
 
 

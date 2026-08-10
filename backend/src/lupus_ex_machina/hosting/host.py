@@ -17,6 +17,7 @@ from lupus_ex_machina.hosting.errors import NoGameError, OneGameAtATimeError
 from lupus_ex_machina.hosting.game import HostedGame
 from lupus_ex_machina.hosting.stage import Stage
 from lupus_ex_machina.llm.completions import Completions
+from lupus_ex_machina.llm.throttling import Waiting
 
 #: The stages in which a game still holds the place.
 UNDERWAY = (Stage.CREATED, Stage.PLAYING)
@@ -25,7 +26,7 @@ UNDERWAY = (Stage.CREATED, Stage.PLAYING)
 #: settings of *that* game because the retry policy is one of them (D-092): a
 #: client built once at start-up would have no game to read a policy from, and
 #: would quietly fall back on its own defaults.
-Provider = Callable[[SystemOptions], Completions]
+Provider = Callable[[SystemOptions, Waiting], Completions]
 
 
 class GameHost:
@@ -45,7 +46,7 @@ class GameHost:
         """Deal a new game, unless one is still underway."""
         if self._current is not None and self._current.stage in UNDERWAY:
             raise OneGameAtATimeError("Une partie est déjà en cours. Terminez-la ou abandonnez-la.")
-        self._current = HostedGame(configuration, completions=self._provider(configuration.system))
+        self._current = HostedGame(configuration, provider=self._provider)
         return self._current
 
     async def abandon(self) -> None:

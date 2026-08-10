@@ -14,6 +14,7 @@ step with the game that was played.
 import asyncio
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, suppress
+from typing import TYPE_CHECKING
 
 from lupus_ex_machina.configuration.schema import GameConfiguration
 from lupus_ex_machina.engine.events import Event
@@ -31,21 +32,29 @@ from lupus_ex_machina.hosting.errors import AlreadyStartedError
 from lupus_ex_machina.hosting.lead import turns_of_lead
 from lupus_ex_machina.hosting.stage import Stage
 from lupus_ex_machina.llm.agent import LlmAgent
-from lupus_ex_machina.llm.completions import Completions
 from lupus_ex_machina.llm.table import seat_agents
+
+if TYPE_CHECKING:
+    from lupus_ex_machina.hosting.host import Provider
 
 
 class HostedGame:
     """A game that has been dealt, and may be played."""
 
-    def __init__(self, configuration: GameConfiguration, *, completions: Completions) -> None:
-        """Deal the table this configuration describes. Nothing is played yet."""
+    def __init__(self, configuration: GameConfiguration, *, provider: "Provider") -> None:
+        """Deal the table this configuration describes. Nothing is played yet.
+
+        The audience is built before the client on purpose: a client is asked
+        for once there is somebody to tell that it is waiting (D-066), and the
+        other order makes that impossible.
+        """
         seed = configuration.rules.table.seed
         self._configuration = configuration
         self._rng = create_rng(seed)
         self._opening = create_game(configuration.rules, rng=self._rng)
         self._broadcaster = Broadcaster()
         self._journal = Journal(observer=self._broadcaster.note)
+        completions = provider(configuration.system, self._broadcaster.note_a_wait)
         self._agents: Mapping[PlayerId, LlmAgent] = seat_agents(
             self._opening,
             configuration.agents,

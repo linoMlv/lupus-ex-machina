@@ -99,3 +99,22 @@ def test_a_client_that_says_something_else_is_not_taken_for_a_confirmation() -> 
             stream.send_json({SHOWN: first[-1]["sequence"]})
 
             assert stream.receive_json()["events"], "the game went on once told properly"
+
+
+def test_a_client_is_told_when_the_provider_is_making_the_game_wait() -> None:
+    """D-066: the wait reaches the screen, so it can show something rather than stop.
+
+    Provoked at the source — a provider that announces a wait the way a rate
+    limited one does — so what is under test is the whole chain: the client
+    announces, the game passes it on, the socket words it.
+    """
+    with logged_in(waiting_for=9.0) as client:
+        client.post("/api/game", json=WATCHED)
+
+        with client.websocket_connect("/api/game/stream") as stream:
+            client.post("/api/game/start")
+            while (told := stream.receive_json())["waiting"] is None:
+                stream.send_json({SHOWN: told["events"][-1]["sequence"]})
+
+        assert told["waiting"] == 9.0
+        assert told["events"] == [], "a wait is not a fact of the game"

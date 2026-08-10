@@ -17,7 +17,7 @@ models; everything around them is English (HR-6).
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import httpx2
@@ -27,18 +27,12 @@ from lupus_ex_machina.llm.backoff import RetryPolicy
 from lupus_ex_machina.llm.completions import Answer, Asked
 from lupus_ex_machina.llm.errors import ModelAnswerError, ThrottledError
 from lupus_ex_machina.llm.messages import Message, Role
+from lupus_ex_machina.llm.throttling import TOO_MANY_REQUESTS, Sleep, Waiting, sent_through
 
 #: Asked once more, and only once: a model that will not comply on the second
 #: attempt costs a turn, not a game. Any higher and a badly written prompt would
 #: quietly multiply the budget of a whole game (GL-7).
 ATTEMPTS = 2
-
-#: What the provider answers when a quota is spent. The one status worth waiting
-#: out: everything else is wrong rather than early.
-TOO_MANY_REQUESTS = 429
-
-#: How the client waits. Injected so the suite never actually sleeps.
-Sleep = Callable[[float], Awaitable[None]]
 
 
 class ChatClient:
@@ -53,6 +47,7 @@ class ChatClient:
         timeout: float = 60.0,
         sleep: Sleep = asyncio.sleep,
         retries: RetryPolicy | None = None,
+        waiting: Waiting | None = None,
     ) -> None:
         """Take where to call, what to call with, and how long to wait for it.
 
@@ -68,6 +63,7 @@ class ChatClient:
         )
         self._sleep = sleep
         self._retries = retries if retries is not None else RetryPolicy()
+        self._waiting = waiting
         self.asked: list[Asked] = []
         self.seconds_spent = 0.0
 
@@ -188,13 +184,9 @@ class ChatClient:
         body = self._body(
             model=model, messages=messages, schema=schema, temperature=temperature, top_p=top_p
         )
-        response = await self._client.post("/chat/completions", json=body)
-
-        for delay in self._retries.delays():
-            if response.status_code != TOO_MANY_REQUESTS:
-                break
-            await self._sleep(_asked_for(response, instead_of=delay))
-            response = await self._client.post("/chat/completions", json=body)
+        response = await sent_through(
+            self._post, body, retries=self._retries, sleep=self._sleep, waiting=self._waiting
+        )
 
         if response.status_code == TOO_MANY_REQUESTS:
             raise ThrottledError(f"{model} kept refusing after {self._retries.attempts} attempts")
@@ -228,17 +220,6 @@ class ChatClient:
             },
         }
 
-
-def _asked_for(response: httpx2.Response, *, instead_of: float) -> float:
-    """The wait the provider asked for, or the one the policy had in mind (D-047).
-
-    Its own answer wins: the provider knows when the quota comes back, the
-    policy is only guessing.
-    """
-    header = response.headers.get("Retry-After")
-    if header is None:
-        return instead_of
-    try:
-        return float(header)
-    except ValueError:
-        return instead_of
+    async def _post(self, body: dict[str, Any]) -> httpx2.Response:
+        """Send one completion request. What the throttling calls to try again."""
+        return await self._client.post("/chat/completions", json=body)

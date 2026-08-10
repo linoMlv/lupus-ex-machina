@@ -8,6 +8,7 @@ ahead of nobody stops, and one whose audience keeps up plays to its end.
 import asyncio
 
 from lupus_ex_machina.configuration.schema import GameConfiguration
+from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.rules import GameMode, GameRules, NightOptions, TableOptions
 from lupus_ex_machina.hosting.stage import Stage
 from support.hosted import SHORT_GAME, a_host
@@ -44,7 +45,8 @@ async def test_a_game_whose_audience_keeps_up_plays_to_its_end() -> None:
                 told = await heard.get()
                 if told is None:
                     return
-                game.shown(told.sequence)
+                if isinstance(told, Event):
+                    game.shown(told.sequence)
 
         game.start()
         watching = asyncio.ensure_future(keeping_up())

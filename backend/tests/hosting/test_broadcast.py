@@ -15,7 +15,8 @@ from lupus_ex_machina.engine.events import Event, PhaseEntered
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.state import GameState
-from lupus_ex_machina.hosting.broadcast import Broadcaster
+from lupus_ex_machina.hosting.broadcast import Broadcaster, Told
+from lupus_ex_machina.hosting.protocol import RateLimited
 from support.hosted import SHORT_GAME, a_host, played_out
 
 
@@ -27,9 +28,9 @@ def a_fact(day: int = 2) -> PhaseEntered:
     return PhaseEntered(phase=Phase.DAY, day=day)
 
 
-def spoken(told: Event | None) -> Event:
-    """The fact a listener was handed, refusing the end of the game as an answer."""
-    assert told is not None, "the game said it was over where a fact was expected"
+def spoken(told: Told | None) -> Event:
+    """The fact a listener was handed, refusing anything that is not one."""
+    assert isinstance(told, Event), "a fact was expected, and something else came"
     return told
 
 
@@ -146,3 +147,23 @@ async def test_a_hosted_game_hands_every_fact_it_records_to_a_listener() -> None
         await played_out(game)
 
     assert heard.qsize() == len(game.events) + 1, "every fact, no fact twice, and the end"
+
+
+async def test_a_wait_reaches_the_listeners_like_a_fact_does() -> None:
+    """D-066: the wait is an event of its own, never an absence of events.
+
+    It is not a fact of the journal — it says nothing about the game, only about
+    the provider — so it travels beside them rather than among them.
+    """
+    broadcaster = Broadcaster()
+
+    with broadcaster.listening() as heard:
+        broadcaster.note_a_wait(12.0)
+
+        told = await asyncio.wait_for(heard.get(), timeout=1)
+        assert told == RateLimited(seconds=12.0)
+
+
+async def test_a_wait_nobody_listens_to_is_not_an_error() -> None:
+    """A game waits on its provider whether or not anybody has come to watch."""
+    Broadcaster().note_a_wait(3.0)

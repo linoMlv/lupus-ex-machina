@@ -11,8 +11,7 @@ from fastapi.testclient import TestClient
 
 from lupus_ex_machina.app import create_app
 from lupus_ex_machina.config import Settings
-from lupus_ex_machina.llm.fake import FakeCompletions
-from support.seats import answering
+from support.hosted import a_provider
 
 PASSWORD = "ouvre-toi"
 
@@ -26,10 +25,7 @@ SHORT_GAME: dict[str, Any] = {
 
 def logged_in() -> TestClient:
     """A client of an application whose models answer without a network."""
-    app = create_app(
-        Settings(password=PASSWORD, secret_key="clef"),
-        completions=FakeCompletions(invent=answering),
-    )
+    app = create_app(Settings(password=PASSWORD, secret_key="clef"), provider=a_provider)
     client = TestClient(app)
     client.post("/api/session", json={"password": PASSWORD})
     return client

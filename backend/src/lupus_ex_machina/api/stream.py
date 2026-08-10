@@ -28,8 +28,8 @@ from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.journal import project_journal
 from lupus_ex_machina.hosting import GameHost, HostedGame
 from lupus_ex_machina.hosting.audience import recipient_for
-from lupus_ex_machina.hosting.broadcast import Heard
-from lupus_ex_machina.hosting.protocol import NOTHING_HEARD, SHOWN, Broadcast
+from lupus_ex_machina.hosting.broadcast import Heard, Told
+from lupus_ex_machina.hosting.protocol import NOTHING_HEARD, SHOWN, Broadcast, RateLimited
 
 router = APIRouter(tags=["game"])
 
@@ -115,9 +115,22 @@ async def _keep_up(
     """Send the backlog, then every fact as it comes, until the game is over."""
     await _send(websocket, tuple(game.events), game, progress, after=since)
     with suppress(WebSocketDisconnect, asyncio.CancelledError):
-        while (event := await heard.get()) is not None:
-            await _send(websocket, (event,), game, progress, after=progress.read)
+        while (told := await heard.get()) is not None:
+            await _relay(websocket, told, game, progress)
         await websocket.close(reason="La partie est terminée.")
+
+
+async def _relay(websocket: WebSocket, told: Told, game: HostedGame, progress: Progress) -> None:
+    """Pass on what the game had to say, whichever of the two things it was.
+
+    A wait is not a fact: it says nothing about the game, only about the
+    provider playing it, so it carries no sequence and moves nothing along
+    (D-066). It goes out as it is, to whoever is watching.
+    """
+    if isinstance(told, RateLimited):
+        await websocket.send_json(Broadcast(waiting=told.seconds).model_dump(mode="json"))
+        return
+    await _send(websocket, (told,), game, progress, after=progress.read)
 
 
 async def _take_confirmations(websocket: WebSocket, game: HostedGame, progress: Progress) -> None:

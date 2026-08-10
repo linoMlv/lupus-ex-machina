@@ -27,10 +27,30 @@ NOTHING_HEARD = -1
 SHOWN = "shown"
 
 
+class RateLimited(BaseModel):
+    """The provider is refusing for rate reasons, and the game is waiting (D-066).
+
+    Not a fact of the journal: it says nothing about the game, only about what
+    it is being played through, so it never gets a sequence and never reaches a
+    replay. It travels beside the facts rather than among them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    seconds: float
+
+
 class Broadcast(BaseModel):
-    """One message: some facts, and the protocol they are written in."""
+    """One message: what happened, or what is being waited for.
+
+    Both in one envelope rather than two kinds of message: it describes the
+    state of the stream at an instant, and a wait is part of that state. A front
+    end that sees `waiting` puts up an indicator (D-066) instead of showing a
+    scene that has stopped for no stated reason.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     version: int = PROTOCOL_VERSION
     events: tuple[Event, ...] = Field(default_factory=tuple)
+    waiting: float | None = None

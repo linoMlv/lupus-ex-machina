@@ -17,10 +17,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from lupus_ex_machina.engine.events import Event
+from lupus_ex_machina.hosting.protocol import RateLimited
 
-#: What a listener reads from. ``None`` means the game has nothing more to say —
-#: without it a client would wait on a game that had ended half an hour ago.
-Heard = asyncio.Queue[Event | None]
+#: What a listener reads from. A fact of the game, a wait on the provider that
+#: is playing it (D-066), or ``None`` for "nothing more will come" — without the
+#: last one a client would wait on a game that ended half an hour ago.
+Told = Event | RateLimited
+Heard = asyncio.Queue[Told | None]
 
 
 class Broadcaster:
@@ -38,8 +41,12 @@ class Broadcaster:
         keeps a slow client from slowing the game down. What bounds the *game*
         is the buffer of J8.4, which pauses between turns rather than mid-fact.
         """
+        self._tell(event)
+
+    def _tell(self, told: Told | None) -> None:
+        """Hand that to every listener. Never waits, never refuses."""
         for listener in self._listeners:
-            listener.put_nowait(event)
+            listener.put_nowait(told)
 
     def close(self) -> None:
         """Tell every listener the game has nothing more to say.
@@ -56,6 +63,14 @@ class Broadcaster:
         self._closed = True
         for listener in self._listeners:
             listener.put_nowait(None)
+
+    def note_a_wait(self, seconds: float) -> None:
+        """Tell every listener the provider is holding the game up (D-066).
+
+        Announced rather than left to be inferred: a scene that stops with
+        nothing on screen to explain it is the one thing D-066 asks not to do.
+        """
+        self._tell(RateLimited(seconds=seconds))
 
     @contextmanager
     def listening(self) -> Iterator[Heard]:

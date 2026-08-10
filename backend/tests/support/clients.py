@@ -8,7 +8,7 @@ the loop lives for as long as the block does — which is what a real server doe
 for as long as it runs.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from typing import Any
 
@@ -17,8 +17,13 @@ from starlette.websockets import WebSocketDisconnect
 
 from lupus_ex_machina.app import create_app
 from lupus_ex_machina.config import Settings
+from lupus_ex_machina.configuration.system import SystemOptions
 from lupus_ex_machina.hosting import GameHost, HostedGame
+from lupus_ex_machina.hosting.host import Provider
 from lupus_ex_machina.hosting.protocol import SHOWN
+from lupus_ex_machina.llm.completions import Answer, Asked, Completions
+from lupus_ex_machina.llm.messages import Message
+from lupus_ex_machina.llm.throttling import Waiting
 from support.hosted import a_completions
 
 PASSWORD = "ouvre-toi"
@@ -44,9 +49,13 @@ PLAYED: dict[str, Any] = {
 
 
 @contextmanager
-def logged_in(*, playing: bool = False) -> Iterator[TestClient]:
-    """A client through the door, of an application whose models reach nobody."""
-    app = create_app(Settings(password=PASSWORD, secret_key="clef"), completions=a_completions())
+def logged_in(*, playing: bool = False, waiting_for: float | None = None) -> Iterator[TestClient]:
+    """A client through the door, of an application whose models reach nobody.
+
+    A provider may be made to announce a wait as a rate limited one does, which
+    is how the whole chain of D-066 is exercised from its source.
+    """
+    app = create_app(Settings(password=PASSWORD, secret_key="clef"), provider=_waits(waiting_for))
     with TestClient(app) as client:
         client.post("/api/session", json={"password": PASSWORD})
         if playing:
@@ -85,3 +94,56 @@ def followed_to_the_end(client: TestClient) -> list[dict[str, Any]]:
             captured.extend(sent)
             stream.send_json({SHOWN: sent[-1]["sequence"]})
     return captured
+
+
+def _waits(seconds: float | None) -> Provider:
+    """A way of building a provider that announces a wait, as a throttled one does.
+
+    Announced on the first question rather than on construction: a client is
+    built long before a game asks it anything, and a wait announced to an empty
+    room is a wait nobody could have been shown.
+    """
+
+    def built(system: SystemOptions, waiting: Waiting) -> Completions:
+        inner = a_completions()
+        return inner if seconds is None else _Announcing(inner, waiting, seconds)
+
+    return built
+
+
+class _Announcing:
+    """A provider that says it is waiting, once, before answering anything."""
+
+    def __init__(self, inner: Completions, waiting: Waiting, seconds: float) -> None:
+        """Take who really answers, who to tell, and how long to claim."""
+        self._inner = inner
+        self._waiting = waiting
+        self._seconds = seconds
+        self._said = False
+
+    @property
+    def asked(self) -> Sequence[Asked]:
+        """What was asked, straight from whoever really answers."""
+        return self._inner.asked
+
+    @property
+    def seconds_spent(self) -> float:
+        """How long that took, straight from whoever really answers."""
+        return self._inner.seconds_spent
+
+    async def complete(
+        self,
+        *,
+        model: str,
+        messages: Sequence[Message],
+        schema: type[Answer],
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+    ) -> Answer:
+        """Announce the wait once, then answer as the inner provider would."""
+        if not self._said:
+            self._said = True
+            self._waiting(self._seconds)
+        return await self._inner.complete(
+            model=model, messages=messages, schema=schema, temperature=temperature, top_p=top_p
+        )
