@@ -1,8 +1,11 @@
 """A hosted game whose models answer without a network (J8)."""
 
+import asyncio
+
 from lupus_ex_machina.configuration.schema import GameConfiguration
 from lupus_ex_machina.configuration.system import SystemOptions
 from lupus_ex_machina.engine.rules import GameRules, NightOptions, TableOptions
+from lupus_ex_machina.hosting.game import HostedGame
 from lupus_ex_machina.hosting.host import GameHost
 from lupus_ex_machina.llm.completions import Completions
 from lupus_ex_machina.llm.fake import FakeCompletions
@@ -31,3 +34,26 @@ def a_provider(system: SystemOptions) -> Completions:
 def a_host() -> GameHost:
     """A host whose games are played by models that reach nobody."""
     return GameHost(provider=a_provider)
+
+
+async def played_out(game: HostedGame) -> None:
+    """Play a whole game through, standing in for an audience that keeps up.
+
+    A hosted game runs a few turns ahead of whoever is watching and waits once
+    too many are in flight (J8.4). A test that wants a whole game therefore has
+    to be an audience — which is the honest thing: without one, a game stopping
+    early is the feature, not a hang.
+    """
+    game.start()
+    watching = asyncio.ensure_future(_keeping_up(game))
+    try:
+        await game.played()
+    finally:
+        watching.cancel()
+
+
+async def _keeping_up(game: HostedGame) -> None:
+    """Confirm having shown everything, over and over, as fast as it is written."""
+    while True:
+        game.shown(len(game.events))
+        await asyncio.sleep(0)

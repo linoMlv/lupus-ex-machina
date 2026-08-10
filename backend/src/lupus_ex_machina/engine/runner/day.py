@@ -21,7 +21,7 @@ from lupus_ex_machina.engine.events import (
 from lupus_ex_machina.engine.players import PlayerId
 from lupus_ex_machina.engine.resolution import resolve_day, tied_targets
 from lupus_ex_machina.engine.runner import acting, closing, count
-from lupus_ex_machina.engine.runner.controls import DebateControl, FloorClaim
+from lupus_ex_machina.engine.runner.controls import DebateControl, FloorClaim, Pacing
 from lupus_ex_machina.engine.runner.scribe import Scribe
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
@@ -38,10 +38,20 @@ def _round_progress(state: GameState) -> tuple[int, int]:
 
 
 async def play_day(
-    scribe: Scribe, state: GameState, *, control: DebateControl, claim: FloorClaim
+    scribe: Scribe,
+    state: GameState,
+    *,
+    control: DebateControl,
+    claim: FloorClaim,
+    pacing: Pacing | None = None,
 ) -> tuple[GameState, Outcome | None]:
-    """Run the debate, break a tie if there is one, then resolve the vote."""
-    state = await _debate(scribe, state, control=control, claim=claim)
+    """Run the debate, break a tie if there is one, then resolve the vote.
+
+    A day nobody paces never waits. Unlike the rules, which travel in the state
+    precisely so that no caller can forget them (J6), a missing pace is the safe
+    default rather than a disagreement: it plays the day straight through.
+    """
+    state = await _debate(scribe, state, control=control, claim=claim, pacing=pacing or Pacing())
 
     tied = tied_targets(state)
     if tied and state.rules.vote.hold_a_runoff_on_a_tie:
@@ -55,7 +65,7 @@ async def play_day(
 
 
 async def _debate(
-    scribe: Scribe, state: GameState, *, control: DebateControl, claim: FloorClaim
+    scribe: Scribe, state: GameState, *, control: DebateControl, claim: FloorClaim, pacing: Pacing
 ) -> GameState:
     """Auction the floor over and over until the round closes itself (D-013).
 
@@ -72,6 +82,8 @@ async def _debate(
             return state
         if control.is_out_of_turns:
             return _force_the_vote(scribe, state, ForcedVoteReason.MODERATOR)
+
+        await pacing.before_a_turn(recorded=len(scribe.events))
 
         state, acted = await _auction_the_floor(scribe, state, claim=claim)
         control.spend_a_turn()

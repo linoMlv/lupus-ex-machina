@@ -9,14 +9,16 @@ for as long as it runs.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from lupus_ex_machina.app import create_app
 from lupus_ex_machina.config import Settings
 from lupus_ex_machina.hosting import GameHost, HostedGame
+from lupus_ex_machina.hosting.protocol import SHOWN
 from support.hosted import a_completions
 
 PASSWORD = "ouvre-toi"
@@ -62,3 +64,24 @@ def game_of(client: TestClient) -> HostedGame:
     hosted = host.current
     assert hosted is not None, "the application is hosting no game"
     return hosted
+
+
+def followed_to_the_end(client: TestClient) -> list[dict[str, Any]]:
+    """Every fact that travelled to that client, over a whole game.
+
+    Confirms what it has shown as it goes, which is what a front end does and
+    what lets the game go on: a hosted game runs a few turns ahead of its
+    audience and waits once too many are in flight (J8.4). A reader that never
+    confirmed would watch the game stop, which is the feature rather than a hang.
+
+    Reads until the server hangs up, which it does once the game has nothing
+    more to say. Catching anything wider would let a broken socket read as a
+    finished game, and the capture would fall short of what it is checking.
+    """
+    captured: list[dict[str, Any]] = []
+    with client.websocket_connect("/api/game/stream") as stream, suppress(WebSocketDisconnect):
+        while True:
+            sent = stream.receive_json()["events"]
+            captured.extend(sent)
+            stream.send_json({SHOWN: sent[-1]["sequence"]})
+    return captured

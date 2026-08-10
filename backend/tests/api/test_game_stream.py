@@ -17,8 +17,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from lupus_ex_machina.app import create_app
 from lupus_ex_machina.config import Settings
-from lupus_ex_machina.hosting.protocol import PROTOCOL_VERSION
-from support.clients import PASSWORD, WATCHED, logged_in
+from lupus_ex_machina.hosting.protocol import PROTOCOL_VERSION, SHOWN
+from support.clients import PASSWORD, WATCHED, followed_to_the_end, logged_in
 
 
 def test_the_stream_is_closed_to_anyone_without_a_session() -> None:
@@ -78,12 +78,24 @@ def test_the_stream_closes_itself_once_the_game_is_over() -> None:
         client.post("/api/game", json=WATCHED)
         client.post("/api/game/start")
 
-        with pytest.raises(WebSocketDisconnect):
-            _read_until_closed(client)
+        assert followed_to_the_end(client), "and it was told the game ended"
 
 
-def _read_until_closed(client: TestClient) -> None:
-    """Read the stream until the server hangs up, which is what is under test."""
-    with client.websocket_connect("/api/game/stream") as stream:
-        while True:
-            stream.receive_json()
+def test_a_client_that_says_something_else_is_not_taken_for_a_confirmation() -> None:
+    """A stray message must not end a game, nor pass for having shown anything.
+
+    The stream is one-way in spirit: what comes back is a courtesy, and courtesy
+    that arrives malformed is ignored rather than fatal.
+    """
+    with logged_in() as client:
+        client.post("/api/game", json=WATCHED)
+        client.post("/api/game/start")
+
+        with client.websocket_connect("/api/game/stream") as stream:
+            first = stream.receive_json()["events"]
+            stream.send_json({"bonsoir": "tout le monde"})
+            stream.send_json({SHOWN: "pas un entier"})
+            stream.send_json(["pas un objet"])
+            stream.send_json({SHOWN: first[-1]["sequence"]})
+
+            assert stream.receive_json()["events"], "the game went on once told properly"

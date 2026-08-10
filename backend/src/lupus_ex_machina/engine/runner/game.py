@@ -28,7 +28,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.rng import Rng, create_rng
 from lupus_ex_machina.engine.roles import Team
 from lupus_ex_machina.engine.runner import acting
-from lupus_ex_machina.engine.runner.controls import DebateControl, FloorClaim
+from lupus_ex_machina.engine.runner.controls import DebateControl, FloorClaim, Pacing
 from lupus_ex_machina.engine.runner.day import play_day
 from lupus_ex_machina.engine.runner.night import play_night
 from lupus_ex_machina.engine.runner.scribe import Agents, Scribe
@@ -63,6 +63,7 @@ async def play_game(
     journal: Journal | None = None,
     control: DebateControl | None = None,
     claim: FloorClaim | None = None,
+    pacing: Pacing | None = None,
     rng: Rng | None = None,
 ) -> GameResult:
     """Play a full game and return who won.
@@ -89,18 +90,19 @@ async def play_game(
         control if control is not None else DebateControl(state.rules.vote.turns_before_forced_vote)
     )
     button = claim if claim is not None else FloorClaim()
+    pace = pacing if pacing is not None else Pacing()
 
     state = open_the_game(scribe, state)
-    state = await play_night_zero(scribe, state)
+    state = await play_night_zero(scribe, state, pace)
 
     for round_number in range(1, max_rounds + 1):
         state = scribe.enter(state, Phase.DAY, day=round_number)
 
-        state, outcome = await play_day(scribe, state, control=moderator, claim=button)
+        state, outcome = await play_day(scribe, state, control=moderator, claim=button, pacing=pace)
         if outcome is not None:
             return result(scribe, state, outcome, round_number)
 
-        state, outcome = await play_night(scribe, state)
+        state, outcome = await play_night(scribe, state, pace)
         if outcome is not None:
             return result(scribe, state, outcome, round_number)
 
@@ -124,7 +126,7 @@ def open_the_game(scribe: Scribe, state: GameState) -> GameState:
     return state
 
 
-async def play_night_zero(scribe: Scribe, state: GameState) -> GameState:
+async def play_night_zero(scribe: Scribe, state: GameState, pacing: Pacing) -> GameState:
     """Let everyone take in the situation. No action is possible (D-032).
 
     Intents are judged here like anywhere else, even though nothing legal on
@@ -132,6 +134,7 @@ async def play_night_zero(scribe: Scribe, state: GameState) -> GameState:
     refused rather than quietly ignored.
     """
     for player in state.living:
+        await pacing.before_a_turn(recorded=len(scribe.events))
         state = await acting.take_turn(scribe, state, player.id)
     return state
 

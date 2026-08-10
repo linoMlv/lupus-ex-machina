@@ -14,10 +14,8 @@ from lupus_ex_machina.configuration.schema import GameConfiguration
 from lupus_ex_machina.engine.rules import GameRules, NightOptions, TableOptions
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.hosting.errors import NoGameError, OneGameAtATimeError
-from lupus_ex_machina.hosting.host import GameHost
 from lupus_ex_machina.hosting.stage import Stage
-from lupus_ex_machina.llm.fake import FakeCompletions
-from support.seats import answering
+from support.hosted import a_host, played_out
 
 SHORT_GAME = GameConfiguration(
     rules=GameRules(
@@ -25,11 +23,6 @@ SHORT_GAME = GameConfiguration(
         night=NightOptions(require_werewolf_target=True),
     )
 )
-
-
-def a_host() -> GameHost:
-    """A host whose models answer without a network."""
-    return GameHost(provider=lambda system: FakeCompletions(invent=answering))
 
 
 def test_a_created_game_is_dealt_but_not_played() -> None:
@@ -47,8 +40,7 @@ async def test_a_started_game_plays_itself_to_an_end() -> None:
     host = a_host()
     game = host.create(SHORT_GAME)
 
-    game.start()
-    await game.played()
+    await played_out(game)
 
     assert game.stage is Stage.OVER
     assert game.outcome in tuple(Outcome)
@@ -67,8 +59,7 @@ async def test_a_game_that_ended_leaves_the_place_to_the_next_one() -> None:
     """A finished game stays readable, and no longer stands in the way."""
     host = a_host()
     game = host.create(SHORT_GAME)
-    game.start()
-    await game.played()
+    await played_out(game)
 
     assert host.create(SHORT_GAME) is not game
     assert game.events, "and the one before is still there to read"

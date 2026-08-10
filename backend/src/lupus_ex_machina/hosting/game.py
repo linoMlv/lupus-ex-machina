@@ -22,11 +22,13 @@ from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.runner import play_game
+from lupus_ex_machina.engine.runner.controls import Pacing
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.hosting.broadcast import Broadcaster, Heard
 from lupus_ex_machina.hosting.errors import AlreadyStartedError
+from lupus_ex_machina.hosting.lead import turns_of_lead
 from lupus_ex_machina.hosting.stage import Stage
 from lupus_ex_machina.llm.agent import LlmAgent
 from lupus_ex_machina.llm.completions import Completions
@@ -51,6 +53,7 @@ class HostedGame:
             seed=seed,
             system=configuration.system,
         )
+        self._pacing = Pacing(turns_in_flight=turns_of_lead(configuration))
         self._stage = Stage.CREATED
         self._task: asyncio.Task[None] | None = None
         self._outcome: Outcome | None = None
@@ -98,6 +101,16 @@ class HostedGame:
             return self._opening
         return replay(recorded, rules=self._configuration.rules)
 
+    def shown(self, sequence: int) -> None:
+        """Take note that a client has displayed everything up to that fact.
+
+        This is what lets the game go on: it runs a few turns ahead of whoever
+        is watching (D-023) and waits once too many are in flight — one single
+        turn when somebody is *playing*, so an absolute priority is always read
+        before the next turn (D-014).
+        """
+        self._pacing.shown(sequence)
+
     def listening(self) -> AbstractContextManager[Heard]:
         """Listen to the facts this game records, for as long as the block lasts.
 
@@ -139,7 +152,11 @@ class HostedGame:
         """
         try:
             result = await play_game(
-                self._opening, dict(self._agents), journal=self._journal, rng=self._rng
+                self._opening,
+                dict(self._agents),
+                journal=self._journal,
+                pacing=self._pacing,
+                rng=self._rng,
             )
             self._outcome = result.outcome
             self._stage = Stage.OVER

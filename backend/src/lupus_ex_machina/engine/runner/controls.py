@@ -1,9 +1,12 @@
-"""The two hands that reach into a running debate from outside the rules.
+"""The three hands that reach into a running game from outside the rules.
 
-Both are mutable and both are read *between* turns, never inside one. That is
-where "the floor is never cut in the middle of a turn" comes from (D-014): no
-rule says it, the place these are read does.
+All three are read *between* turns, never inside one. That is where "the floor
+is never cut in the middle of a turn" comes from (D-014): no rule says it, the
+place these are read does — and the pause of :class:`Pacing` inherits the same
+property for free.
 """
+
+import asyncio
 
 from lupus_ex_machina.engine.players import PlayerId
 
@@ -65,3 +68,49 @@ class FloorClaim:
         """Hand back whoever claimed the floor, and forget the claim."""
         claimed, self._claimed_by = self._claimed_by, None
         return claimed
+
+
+class Pacing:
+    """How far ahead of its audience a game may run (D-023, D-095).
+
+    The engine plays far faster than anybody watches — a turn costs seconds of
+    model calls and half a minute of bubbles — so left alone it would play a
+    whole game into a buffer nobody has looked at, spending the call budget on
+    turns the user may never see.
+
+    A turn is *in flight* until whoever is watching says they have shown
+    everything that existed when it began. Past a few of those, the game waits.
+
+    **Nobody is watching by default.** A scripted game, `make play`, the suite:
+    none of them has an audience, and a game that paused for one would never
+    finish. Only a hosted game hands out a paced one.
+    """
+
+    def __init__(self, turns_in_flight: int | None = None) -> None:
+        """Take how many turns may go unshown, or ``None`` to never wait."""
+        self._limit = turns_in_flight
+        self._unshown: list[int] = []
+        self._room = asyncio.Event()
+
+    @property
+    def turns_in_flight(self) -> int:
+        """How many turns have been played that nobody has caught up with."""
+        return len(self._unshown)
+
+    async def before_a_turn(self, *, recorded: int) -> None:
+        """Wait until there is room for one more turn, then count it in flight.
+
+        What a turn is marked with is the last fact that existed *before* it —
+        so it stops being in flight the moment the audience reaches its opening.
+        The very first turn of a game is marked with nothing, and can never wait
+        for an audience that has had nothing to look at yet.
+        """
+        while self._limit is not None and len(self._unshown) >= self._limit:
+            self._room.clear()
+            await self._room.wait()
+        self._unshown.append(recorded - 1)
+
+    def shown(self, sequence: int) -> None:
+        """Take note that everything up to that fact has been shown."""
+        self._unshown = [mark for mark in self._unshown if mark > sequence]
+        self._room.set()

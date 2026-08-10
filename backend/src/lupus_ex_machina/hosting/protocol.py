@@ -21,6 +21,11 @@ PROTOCOL_VERSION = 1
 #: What a client declares when it has never heard anything.
 NOTHING_HEARD = -1
 
+#: What a client sends back to say how far it has *displayed* — not merely
+#: received. It is what lets the game go on: it runs a few turns ahead of the
+#: display and waits once too many are in flight (D-023, J8.4).
+SHOWN = "shown"
+
 
 class Broadcast(BaseModel):
     """One message: some facts, and the protocol they are written in."""

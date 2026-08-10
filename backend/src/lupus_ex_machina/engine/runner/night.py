@@ -28,6 +28,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.roles import Team
 from lupus_ex_machina.engine.runner import acting, closing
+from lupus_ex_machina.engine.runner.controls import Pacing
 from lupus_ex_machina.engine.runner.scribe import Scribe
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
@@ -47,17 +48,22 @@ def _last_of_the_pack(callers: tuple[Player, ...]) -> PlayerId | None:
     return wolves[-1].id if wolves else None
 
 
-async def play_night(scribe: Scribe, state: GameState) -> tuple[GameState, Outcome | None]:
-    """Wake the roles in the order the night calls them, then resolve."""
+async def play_night(
+    scribe: Scribe, state: GameState, pacing: Pacing | None = None
+) -> tuple[GameState, Outcome | None]:
+    """Wake the roles in the order the night calls them, then resolve.
+
+    A night nobody paces never waits, like a day (see :func:`day.play_day`).
+    """
     state = scribe.enter(state, Phase.NIGHT)
-    state = await _collect_night_intents(scribe, state)
+    state = await _collect_night_intents(scribe, state, pacing or Pacing())
 
     _hand_out_what_the_seers_read(scribe, state)
     _write_down_what_was_used_up(scribe, state)
     return await closing.close(scribe, state, resolve_night, _night_outcome)
 
 
-async def _collect_night_intents(scribe: Scribe, state: GameState) -> GameState:
+async def _collect_night_intents(scribe: Scribe, state: GameState, pacing: Pacing) -> GameState:
     """Ask everyone the night wakes, in the order their role is called (D-006).
 
     Reading the callers once is safe here, and only here: nothing kills anyone
@@ -69,6 +75,7 @@ async def _collect_night_intents(scribe: Scribe, state: GameState) -> GameState:
     last_wolf = _last_of_the_pack(callers)
 
     for caller in callers:
+        await pacing.before_a_turn(recorded=len(scribe.events))
         state = await acting.take_turn(scribe, state, caller.id)
         if caller.id == last_wolf:
             state = await _settle_what_the_pack_designates(scribe, state)

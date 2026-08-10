@@ -15,37 +15,17 @@ one. That it produced facts a player must not see. And that it produced some
 they must. A property over an empty set is true and worth nothing.
 """
 
-from contextlib import suppress
-from typing import Any
-
-from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
-
 from lupus_ex_machina.engine.journal import project_journal
 from lupus_ex_machina.hosting.audience import recipient_for
 from lupus_ex_machina.hosting.stage import Stage
-from support.clients import game_of, logged_in
-
-
-def everything_sent(client: TestClient) -> list[dict[str, Any]]:
-    """Every fact that travelled to the client, over a whole game.
-
-    Read until the server closes, which it does once the game has nothing more
-    to say. Catching anything wider would let a broken socket read as a finished
-    game, and the capture would fall silently short of what it is checking.
-    """
-    captured: list[dict[str, Any]] = []
-    with client.websocket_connect("/api/game/stream") as stream, suppress(WebSocketDisconnect):
-        while True:
-            captured.extend(stream.receive_json()["events"])
-    return captured
+from support.clients import followed_to_the_end, game_of, logged_in
 
 
 def test_a_player_is_sent_their_projection_and_not_one_fact_more() -> None:
     with logged_in(playing=True) as client:
         client.post("/api/game/start")
 
-        sent = everything_sent(client)
+        sent = followed_to_the_end(client)
 
         game = game_of(client)
         recorded = tuple(game.events)

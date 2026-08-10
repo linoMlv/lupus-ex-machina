@@ -16,7 +16,7 @@ from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.hosting.broadcast import Broadcaster
-from support.hosted import SHORT_GAME, a_host
+from support.hosted import SHORT_GAME, a_host, played_out
 
 
 def a_day() -> GameState:
@@ -106,8 +106,7 @@ async def test_a_game_that_reaches_its_end_closes_its_broadcast() -> None:
     game = a_host().create(SHORT_GAME)
 
     with game.listening() as heard:
-        game.start()
-        await game.played()
+        await played_out(game)
         heard_after = [heard.get_nowait() for _ in range(heard.qsize())]
 
     assert heard_after[-1] is None
@@ -144,7 +143,6 @@ async def test_a_hosted_game_hands_every_fact_it_records_to_a_listener() -> None
     game = a_host().create(SHORT_GAME)
 
     with game.listening() as heard:
-        game.start()
-        await game.played()
+        await played_out(game)
 
     assert heard.qsize() == len(game.events) + 1, "every fact, no fact twice, and the end"
