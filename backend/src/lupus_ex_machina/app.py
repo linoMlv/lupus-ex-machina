@@ -8,7 +8,7 @@ each with its own settings.
 from fastapi import FastAPI
 
 from lupus_ex_machina import __version__
-from lupus_ex_machina.api import health
+from lupus_ex_machina.api import auth, health
 from lupus_ex_machina.config import Settings
 from lupus_ex_machina.web import static
 
@@ -27,6 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
 
     app.include_router(health.router)
+    app.include_router(auth.router)
 
     # Order matters: the front end mount answers every path left, so it comes last.
     static.mount_models(app, settings.models_dir)
