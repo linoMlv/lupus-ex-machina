@@ -58,6 +58,7 @@ def test_information_defaults_to_what_the_table_is_told() -> None:
         "reveal_ballots_at_the_count": True,
         "reveal_priorities_at_the_designation": True,
         "public_vote_history": True,
+        "reveal_everything_to_the_dead": True,
         "show_personalities": True,
     }
 

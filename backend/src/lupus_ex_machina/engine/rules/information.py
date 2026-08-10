@@ -48,6 +48,20 @@ class InformationOptions(BaseModel):
         description="L'historique des votes des tours passés reste accessible aux agents.",
     )
 
+    reveal_everything_to_the_dead: bool = Field(
+        default=True,
+        description="Une fois mort, le joueur voit toute la partie, y compris ce qu'il a manqué.",
+    )
+    """The custom of Werewolf, and the same reading of D-080 the project owner
+    already chose for the role of the deceased (D-105). It covers the *whole*
+    journal, the nights never seen included: the recipient becomes the spectator,
+    and a projection filters the whole sequence with it. Showing only what comes
+    after would need a second filtering rule, and would have a player watch
+    others react to facts they will never see.
+
+    It is not a way round the mode being fixed at creation (D-100): the game
+    decides this, never the client."""
+
     show_personalities: bool = Field(
         default=True,
         description="Le spectateur voit la personnalité MBTI de chaque agent.",

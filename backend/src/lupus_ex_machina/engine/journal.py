@@ -25,6 +25,15 @@ from lupus_ex_machina.engine.visibility import Recipient
 #: instant for instant, and so tests do not depend on the wall clock.
 Clock = Callable[[], datetime]
 
+#: Somebody told of each fact as it is written (D-094). Injected like the clock,
+#: which is what lets a game in progress be watched without the engine knowing
+#: that anybody is watching.
+#:
+#: **It notes, it does not emit.** This runs inside the task playing the game, so
+#: an observer that reached a network would make the game wait on a client;
+#: projecting and sending belong to whoever collects what it put aside.
+Observer = Callable[[Event], None]
+
 
 def utc_now() -> datetime:
     """Read the current instant, timezone-aware."""
@@ -34,10 +43,14 @@ def utc_now() -> datetime:
 class Journal:
     """The facts of one game, in the order they happened."""
 
-    def __init__(self, *, clock: Clock = utc_now) -> None:
-        """Start an empty journal, reading its timestamps from ``clock``."""
+    def __init__(self, *, clock: Clock = utc_now, observer: Observer | None = None) -> None:
+        """Start an empty journal, reading its timestamps from ``clock``.
+
+        An observer, if there is one, is told of each fact as it is appended.
+        """
         self._events: list[Event] = []
         self._clock = clock
+        self._observer = observer
 
     def record(self, payload: EventPayload, *, at: GameState) -> Event:
         """Append a fact, stamped with the moment and the phase it happened in.
@@ -54,6 +67,8 @@ class Journal:
             payload=payload,
         )
         self._events.append(event)
+        if self._observer is not None:
+            self._observer(event)
         return event
 
     @property

@@ -13,7 +13,7 @@ step with the game that was played.
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from contextlib import AbstractContextManager, suppress
 
 from lupus_ex_machina.configuration.schema import GameConfiguration
 from lupus_ex_machina.engine.events import Event
@@ -25,6 +25,7 @@ from lupus_ex_machina.engine.runner import play_game
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
+from lupus_ex_machina.hosting.broadcast import Broadcaster, Heard
 from lupus_ex_machina.hosting.errors import AlreadyStartedError
 from lupus_ex_machina.hosting.stage import Stage
 from lupus_ex_machina.llm.agent import LlmAgent
@@ -41,7 +42,8 @@ class HostedGame:
         self._configuration = configuration
         self._rng = create_rng(seed)
         self._opening = create_game(configuration.rules, rng=self._rng)
-        self._journal = Journal()
+        self._broadcaster = Broadcaster()
+        self._journal = Journal(observer=self._broadcaster.note)
         self._agents: Mapping[PlayerId, LlmAgent] = seat_agents(
             self._opening,
             configuration.agents,
@@ -85,9 +87,24 @@ class HostedGame:
         Derived rather than kept: a state held alongside the journal would be a
         second description of the same game, and this project has learned what
         happens when two of those drift apart.
+
+        Replayed **under the rules this game was dealt with**. Rules are not
+        facts and so are not in the journal: a replay told nothing rebuilds a
+        game under the defaults, which would answer "spectator" about a game
+        somebody is playing — and that answer decides who is sent what (D-100).
         """
         recorded = self._journal.events
-        return replay(recorded) if recorded else self._opening
+        if not recorded:
+            return self._opening
+        return replay(recorded, rules=self._configuration.rules)
+
+    def listening(self) -> AbstractContextManager[Heard]:
+        """Listen to the facts this game records, for as long as the block lasts.
+
+        What comes out is **unfiltered**: it is projected once per recipient, at
+        the edge, because that is where the recipient is known (D-046).
+        """
+        return self._broadcaster.listening()
 
     def start(self) -> None:
         """Set the game playing. It runs on its own from here."""
@@ -111,12 +128,20 @@ class HostedGame:
             self._task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._task
+        self._broadcaster.close()
         self._stage = Stage.ABANDONED
 
     async def _play(self) -> None:
-        """Play the game to its end, and remember who won."""
-        result = await play_game(
-            self._opening, dict(self._agents), journal=self._journal, rng=self._rng
-        )
-        self._outcome = result.outcome
-        self._stage = Stage.OVER
+        """Play the game to its end, and remember who won.
+
+        The broadcast is closed whatever happens, a game given up included: a
+        listener told nothing would hold the line on a game nobody is playing.
+        """
+        try:
+            result = await play_game(
+                self._opening, dict(self._agents), journal=self._journal, rng=self._rng
+            )
+            self._outcome = result.outcome
+            self._stage = Stage.OVER
+        finally:
+            self._broadcaster.close()

@@ -34,7 +34,6 @@ UNREAD: dict[str, str] = {
     "display.manual_bubble_advance": "the one display control of D-022, read by J10",
     "display.animations_enabled": "staging, read by J10 (D-076)",
     "display.effects_enabled": "staging, read by J10 (D-019)",
-    "rules.table.human_seat": "which seat the human plays, read by J8.5 (D-096)",
     "rules.information.show_personalities": (
         "what a spectator is shown of a temperament, read by J11 (D-064)"
     ),

@@ -53,6 +53,7 @@ from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.records import count_words
 from lupus_ex_machina.engine.roles import RoleName
+from lupus_ex_machina.engine.rules import GameRules
 from lupus_ex_machina.engine.state import GameState
 
 
@@ -60,9 +61,17 @@ class JournalReplayError(EngineError):
     """A journal that no real game could have produced."""
 
 
-def replay(events: Iterable[Event]) -> GameState:
-    """Rebuild the state a journal leads to."""
-    rebuild = _Replay()
+def replay(events: Iterable[Event], *, rules: GameRules | None = None) -> GameState:
+    """Rebuild the state a journal leads to, under the rules it was played by.
+
+    Rules are not facts, so they are not in the journal (D-040): a replay has to
+    be told them, or it rebuilds a game nobody played. It went unnoticed for as
+    long as the games being replayed were dealt with the defaults, and J8 asked
+    the first question where the two differ — who a game is projected for is
+    read off its mode, and a replayed state called a game somebody was playing a
+    game nobody was.
+    """
+    rebuild = _Replay(rules)
     for event in events:
         rebuild.apply(event)
     return rebuild.state
@@ -77,7 +86,8 @@ class _Replay:
     opens.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, rules: GameRules | None = None) -> None:
+        self._rules = rules
         self._seats: dict[PlayerId, PlayerSeated] = {}
         self._roles: dict[PlayerId, RoleName] = {}
         self._state: GameState | None = None
@@ -201,7 +211,7 @@ class _Replay:
         """Start the game, which can only ever happen on Night 0 (D-032)."""
         if entered.phase is not Phase.NIGHT_ZERO:
             raise JournalReplayError(f"A game opens on Night 0, not on {entered.phase}")
-        self._state = GameState.initial(self._table())
+        self._state = GameState.initial(self._table(), rules=self._rules)
 
     def _close_round(self, victims: tuple[PlayerId, ...]) -> None:
         """Apply a resolution: the dead, then the round wiped clean."""

@@ -51,6 +51,7 @@ ALLOWED: dict[str, str] = {
     "intents.Intent": "a type alias",
     "turn.NotebookOperation": "a type alias",
     "journal.Clock": "a type alias",
+    "journal.Observer": "a type alias",
     "players.PlayerId": "a type alias",
 }
 

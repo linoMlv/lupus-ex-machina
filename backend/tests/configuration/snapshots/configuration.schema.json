@@ -239,6 +239,12 @@
           "title": "Public Vote History",
           "type": "boolean"
         },
+        "reveal_everything_to_the_dead": {
+          "default": true,
+          "description": "Une fois mort, le joueur voit toute la partie, y compris ce qu'il a manqué.",
+          "title": "Reveal Everything To The Dead",
+          "type": "boolean"
+        },
         "show_personalities": {
           "default": true,
           "description": "Le spectateur voit la personnalité MBTI de chaque agent.",
