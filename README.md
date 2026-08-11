@@ -188,7 +188,7 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   dépasserait sa fenêtre — ce qui, mesure à l'appui, n'arrive jamais : une partie bavarde de huit
   joueurs plafonne à un dixième de la fenêtre courante.
 
-- **J8 — L'API et le temps réel** *(en cours)*. L'application se cache derrière un mot de passe, et
+- **J8 — L'API et le temps réel**. L'application se cache derrière un mot de passe, et
   ce qu'une partie produit se suit en direct. Une partie se distribue d'abord et se démarre ensuite :
   tant que personne ne l'a lancée, aucun modèle n'est sollicité. Ce qui part vers un client est
   **filtré avant d'être émis**, jamais masqué à l'affichage, et un client dit simplement où il en
@@ -199,7 +199,15 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   quand vous jouez, si bien qu'un bouton de parole est toujours lu avant le tour suivant. Et quand le
   fournisseur fait attendre, il le dit : une scène qui s'arrête l'explique au lieu de sembler figée.
 
-Il reste à J8 le siège du joueur humain. Vient ensuite la scène 3D.
+  Le siège que vous occupez est tenu par un agent comme les autres : le moteur ne sait pas s'il
+  parle à une personne ou à un modèle, si bien que ni les règles ni l'étanchéité n'ont de cas
+  particulier à porter. Demander la parole vous met dans l'enchère, où votre demande est pesée comme
+  celle de n'importe qui ; couper la parole passe devant tout le monde, et se lit à la fin du tour
+  en cours, jamais au milieu. Quand la partie attend quelque chose de vous, elle le dit, et elle
+  attend le temps qu'il faudra — sauf si vous avez réglé un minuteur, auquel cas votre tour passe
+  sans que vous ayez rien fait.
+
+Vient ensuite la scène 3D.
 
 ---
 
