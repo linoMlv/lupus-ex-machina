@@ -90,6 +90,7 @@ class Pacing:
         """Take how many turns may go unshown, or ``None`` to never wait."""
         self._limit = turns_in_flight
         self._unshown: list[int] = []
+        self._reached: int | None = None
         self._room = asyncio.Event()
 
     @property
@@ -104,13 +105,28 @@ class Pacing:
         so it stops being in flight the moment the audience reaches its opening.
         The very first turn of a game is marked with nothing, and can never wait
         for an audience that has had nothing to look at yet.
+
+        A turn opening on a fact the audience has **already** named is not in
+        flight at all. Without that, a turn which records nothing would hold the
+        game for ever: `Wait` is legal everywhere (D-048) and is what a person's
+        timer hands back (D-097), so the turn after it opens on the very fact the
+        audience last named — and no further fact would ever exist for them to
+        name. An audience can only ever confirm what was written down.
+
+        An audience that has named nothing yet is told apart from one that has
+        named the nothing before the first fact: until somebody says otherwise,
+        every turn counts, which is what keeps a game from playing its opening
+        into a buffer nobody has opened.
         """
         while self._limit is not None and len(self._unshown) >= self._limit:
             self._room.clear()
             await self._room.wait()
-        self._unshown.append(recorded - 1)
+        if self._reached is None or recorded - 1 > self._reached:
+            self._unshown.append(recorded - 1)
 
     def shown(self, sequence: int) -> None:
         """Take note that everything up to that fact has been shown."""
-        self._unshown = [mark for mark in self._unshown if mark > sequence]
+        reached = sequence if self._reached is None else max(self._reached, sequence)
+        self._reached = reached
+        self._unshown = [mark for mark in self._unshown if mark > reached]
         self._room.set()

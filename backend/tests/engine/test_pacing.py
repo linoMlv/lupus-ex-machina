@@ -64,6 +64,27 @@ async def test_showing_everything_empties_the_flight() -> None:
     assert pacing.turns_in_flight == 0
 
 
+async def test_a_turn_opening_on_a_fact_already_shown_is_not_in_flight() -> None:
+    """Otherwise a turn that records nothing holds the game for ever.
+
+    An audience can only confirm facts that **exist**, and a turn is free to
+    produce none: `Wait` is legal everywhere (D-048), and it is exactly what a
+    person's timer hands back when it runs out (D-097). The turn after it opens
+    on the same fact as the one before, which the audience reached long ago —
+    and would sit in flight with nothing left for anybody to name.
+
+    Found by following a real game over the wire, where a client confirms on
+    receipt rather than in a loop (J8.5.6).
+    """
+    pacing = Pacing(turns_in_flight=1)
+    pacing.shown(7)
+
+    await asyncio.wait_for(pacing.before_a_turn(recorded=8), timeout=1)
+
+    assert pacing.turns_in_flight == 0, "there is nothing left for the audience to reach"
+    await asyncio.wait_for(pacing.before_a_turn(recorded=8), timeout=1)
+
+
 async def test_a_game_nobody_paces_never_waits() -> None:
     """The default of the engine: scripted games and `make play` know no audience."""
     pacing = Pacing()
