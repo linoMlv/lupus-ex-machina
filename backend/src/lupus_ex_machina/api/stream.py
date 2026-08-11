@@ -1,6 +1,6 @@
 """Following a game in real time, projected before a byte of it leaves (J8.3).
 
-Three things hold this together, and each is a decision rather than a detail.
+Four things hold this together, and each is a decision rather than a detail.
 
 **The websocket authenticates itself.** It carries the whole of what a game
 produces, so borrowing the protection of the HTTP routes would leave the traffic
@@ -15,6 +15,10 @@ sequence.
 **Everything is projected, and the recipient comes from the game.** Never from
 the client: a spectator is omniscient, so a mode chosen per connection would let
 anybody open a second tab on a game they are playing (D-100).
+
+**It carries the dialogue of a turn, and nothing else upward** (D-109, J8.5).
+The question the game puts to its player, and the answer to it. The buttons and
+the moderator's hand are routes, because they outlive a connection.
 """
 
 import asyncio
@@ -23,13 +27,21 @@ from contextlib import suppress
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from lupus_ex_machina.api.auth import is_authenticated
+from lupus_ex_machina.api.incoming import take_what_the_client_says
+from lupus_ex_machina.api.progress import Progress, let_the_game_go_on
 from lupus_ex_machina.api.session import SESSION_COOKIE
 from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.journal import project_journal
 from lupus_ex_machina.hosting import GameHost, HostedGame
 from lupus_ex_machina.hosting.audience import recipient_for
 from lupus_ex_machina.hosting.broadcast import Heard, Told
-from lupus_ex_machina.hosting.protocol import NOTHING_HEARD, SHOWN, Broadcast, RateLimited
+from lupus_ex_machina.hosting.protocol import (
+    NOTHING_HEARD,
+    Broadcast,
+    QuestionClosed,
+    QuestionPut,
+    RateLimited,
+)
 
 router = APIRouter(tags=["game"])
 
@@ -70,43 +82,12 @@ async def _follow(websocket: WebSocket, game: HostedGame, heard: Heard, *, since
     """
     progress = Progress()
     catching_up = asyncio.ensure_future(_keep_up(websocket, game, heard, progress, since=since))
-    confirming = asyncio.ensure_future(_take_confirmations(websocket, game, progress))
+    listening = asyncio.ensure_future(take_what_the_client_says(websocket, game, progress))
     try:
-        await asyncio.wait({catching_up, confirming}, return_when=asyncio.FIRST_COMPLETED)
+        await asyncio.wait({catching_up, listening}, return_when=asyncio.FIRST_COMPLETED)
     finally:
-        for task in (catching_up, confirming):
+        for task in (catching_up, listening):
             task.cancel()
-
-
-class Progress:
-    """What a client has been sent, in the two counts that matter.
-
-    A client can only ever confirm a sequence **it has seen**, and a player sees
-    a fraction of the journal: a wolf's night never reaches them, so they can
-    never name it. The pacing, on the other hand, counts in facts *recorded*.
-    Confirming one in terms of the other would stall a played game for ever —
-    which is exactly what it did before this existed.
-
-    So the server keeps both: how far down the journal it has read, and the last
-    sequence it actually put on the wire. A client that names the second has
-    caught up with the first.
-    """
-
-    def __init__(self) -> None:
-        """Start with nothing read, nothing sent and nothing confirmed."""
-        self.read = NOTHING_HEARD
-        self.wired = NOTHING_HEARD
-        self.confirmed = NOTHING_HEARD
-
-    @property
-    def caught_up(self) -> bool:
-        """Whether the client has named everything that was put on the wire.
-
-        Facts it was never entitled to see do not count against it: a night of
-        the pack is nothing a villager can confirm, and holding a game until
-        they did would hold it for ever.
-        """
-        return self.confirmed >= self.wired
 
 
 async def _keep_up(
@@ -114,44 +95,45 @@ async def _keep_up(
 ) -> None:
     """Send the backlog, then every fact as it comes, until the game is over."""
     await _send(websocket, tuple(game.events), game, progress, after=since)
+    await _say_what_is_being_waited_on(websocket, game)
     with suppress(WebSocketDisconnect, asyncio.CancelledError):
         while (told := await heard.get()) is not None:
             await _relay(websocket, told, game, progress)
         await websocket.close(reason="La partie est terminée.")
 
 
+async def _say_what_is_being_waited_on(websocket: WebSocket, game: HostedGame) -> None:
+    """Tell a client that has just arrived what the game is waiting on it for.
+
+    A question put before this client existed was announced to nobody, so a
+    person who refreshed their browser would otherwise sit in front of a game
+    that is waiting on them and says nothing — the same gap between a history
+    and a subscription that D-102 closes for the facts.
+
+    A question put between the listener being attached and this line arrives
+    twice. Harmless, and cheaper than ordering the two: a question carries its
+    number, so the second is the same question said again.
+    """
+    standing = game.person.question if game.person is not None else None
+    if standing is not None:
+        await _say(websocket, Broadcast(question=standing))
+
+
 async def _relay(websocket: WebSocket, told: Told, game: HostedGame, progress: Progress) -> None:
-    """Pass on what the game had to say, whichever of the two things it was.
+    """Pass on what the game had to say, whichever of the three things it was.
 
     A wait is not a fact: it says nothing about the game, only about the
     provider playing it, so it carries no sequence and moves nothing along
-    (D-066). It goes out as it is, to whoever is watching.
+    (D-066). Neither is a question — that says what the game is waiting on its
+    player for (D-096). Both go out as they are, to whoever is watching.
     """
     if isinstance(told, RateLimited):
-        await websocket.send_json(Broadcast(waiting=told.seconds).model_dump(mode="json"))
+        await _say(websocket, Broadcast(waiting=told.seconds))
+        return
+    if isinstance(told, QuestionPut | QuestionClosed):
+        await _say(websocket, Broadcast(question=told))
         return
     await _send(websocket, (told,), game, progress, after=progress.read)
-
-
-async def _take_confirmations(websocket: WebSocket, game: HostedGame, progress: Progress) -> None:
-    """Take what the client says it has shown, which is what lets the game go on.
-
-    A client that says nothing is a client nobody is watching with: the game
-    plays its few turns of lead and waits, which is the whole point (D-023).
-    Anything that is not a confirmation is ignored rather than fatal — the
-    stream is one-way in spirit, and a stray message must not end a game.
-
-    A client that has named the last thing it was sent has caught up with
-    everything read to produce it, whether or not it was allowed to see all of
-    it — see :class:`Progress`.
-    """
-    with suppress(WebSocketDisconnect, asyncio.CancelledError):
-        while True:
-            said = await websocket.receive_json()
-            shown = said.get(SHOWN) if isinstance(said, dict) else None
-            if isinstance(shown, int):
-                progress.confirmed = max(progress.confirmed, shown)
-                _let_the_game_go_on(game, progress)
 
 
 async def _send(
@@ -170,18 +152,12 @@ async def _send(
     fresh = tuple(event for event in events if event.sequence > after)
     theirs = project_journal(fresh, recipient_for(game.state))
     if theirs:
-        await websocket.send_json(Broadcast(events=theirs).model_dump(mode="json"))
+        await _say(websocket, Broadcast(events=theirs))
         progress.wired = theirs[-1].sequence
     progress.read = max((event.sequence for event in fresh), default=after)
-    _let_the_game_go_on(game, progress)
+    let_the_game_go_on(game, progress)
 
 
-def _let_the_game_go_on(game: HostedGame, progress: Progress) -> None:
-    """Tell the game how far this client has kept up, when it has.
-
-    Called from both sides on purpose. A confirmation is the obvious one; the
-    other is a fact the client was not entitled to, which leaves it up to date
-    without it having said a word.
-    """
-    if progress.caught_up:
-        game.shown(progress.read)
+async def _say(websocket: WebSocket, broadcast: Broadcast) -> None:
+    """Put one envelope on the wire. The single place anything leaves this server."""
+    await websocket.send_json(broadcast.model_dump(mode="json"))

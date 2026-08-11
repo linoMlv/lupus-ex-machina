@@ -17,12 +17,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from lupus_ex_machina.engine.events import Event
-from lupus_ex_machina.hosting.protocol import RateLimited
+from lupus_ex_machina.hosting.protocol import Question, RateLimited
 
 #: What a listener reads from. A fact of the game, a wait on the provider that
-#: is playing it (D-066), or ``None`` for "nothing more will come" — without the
-#: last one a client would wait on a game that ended half an hour ago.
-Told = Event | RateLimited
+#: is playing it (D-066), a question the game has put to its person (D-096), or
+#: ``None`` for "nothing more will come" — without the last one a client would
+#: wait on a game that ended half an hour ago.
+Told = Event | RateLimited | Question
 Heard = asyncio.Queue[Told | None]
 
 
@@ -71,6 +72,15 @@ class Broadcaster:
         nothing on screen to explain it is the one thing D-066 asks not to do.
         """
         self._tell(RateLimited(seconds=seconds))
+
+    def note_a_question(self, question: Question) -> None:
+        """Tell every listener what the game is waiting on its person for (D-096).
+
+        Put and closed alike travel this way. Announcing only the asking would
+        leave a client sitting in front of a question the timer has since passed
+        — which records no fact at all, so nothing else would ever say so.
+        """
+        self._tell(question)
 
     @contextmanager
     def listening(self) -> Iterator[Heard]:

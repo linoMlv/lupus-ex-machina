@@ -46,6 +46,26 @@ class TableOptions(BaseModel):
         ge=0,
         description="Siège occupé par le joueur humain, en mode joueur uniquement.",
     )
+    human_answer_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Temps laissé au joueur humain pour répondre. Passé ce délai son tour est passé, "
+            "sans qu'il fasse quoi que ce soit. Vide, la partie l'attend indéfiniment."
+        ),
+    )
+    """One setting for every moment a person is asked anything (D-097): nothing
+    suggests anybody would want one length by day and another by night.
+
+    Off by default, because waiting is the behaviour a game should have — one
+    that does not progress is an admitted state (D-078), and passing somebody's
+    turn is not a thing to do by accident. When it does run out it plays `Wait`,
+    never a blank vote: a blank closes the floor for the round and cannot be
+    taken back (D-013, D-024), which is far too heavy for "they said nothing".
+
+    Left settable in spectator mode rather than refused there, unlike
+    :attr:`human_seat`: a seat nobody occupies makes player mode meaningless,
+    while a timer with nobody to time is merely inert."""
 
     @model_validator(mode="after")
     def _seats_the_human_where_a_seat_exists(self) -> Self:

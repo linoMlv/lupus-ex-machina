@@ -33,6 +33,7 @@ def test_a_table_defaults_to_eight_seats_dealt_from_the_preset() -> None:
         "seed": 1,
         "mode": GameMode.SPECTATOR,
         "human_seat": None,
+        "human_answer_timeout_seconds": None,
     }
 
 

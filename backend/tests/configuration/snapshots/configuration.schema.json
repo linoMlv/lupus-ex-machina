@@ -514,6 +514,20 @@
           "default": null,
           "description": "Siège occupé par le joueur humain, en mode joueur uniquement.",
           "title": "Human Seat"
+        },
+        "human_answer_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Temps laissé au joueur humain pour répondre. Passé ce délai son tour est passé, sans qu'il fasse quoi que ce soit. Vide, la partie l'attend indéfiniment.",
+          "title": "Human Answer Timeout Seconds"
         }
       },
       "title": "TableOptions",

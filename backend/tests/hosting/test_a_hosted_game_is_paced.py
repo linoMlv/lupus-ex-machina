@@ -46,7 +46,7 @@ async def test_a_game_whose_audience_keeps_up_plays_to_its_end() -> None:
                 if told is None:
                     return
                 if isinstance(told, Event):
-                    game.shown(told.sequence)
+                    game.hands.shown(told.sequence)
 
         game.start()
         watching = asyncio.ensure_future(keeping_up())

@@ -8,19 +8,23 @@ the loop lives for as long as the block does — which is what a real server doe
 for as long as it runs.
 """
 
+import asyncio
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 
 from lupus_ex_machina.app import create_app
 from lupus_ex_machina.config import Settings
 from lupus_ex_machina.configuration.system import SystemOptions
+from lupus_ex_machina.engine.agent import Agent
+from lupus_ex_machina.engine.views import PlayerView
 from lupus_ex_machina.hosting import GameHost, HostedGame
 from lupus_ex_machina.hosting.host import Provider
-from lupus_ex_machina.hosting.protocol import SHOWN
+from lupus_ex_machina.hosting.protocol import ANSWER, SHOWN, AskedFor, QuestionState
 from lupus_ex_machina.llm.completions import Answer, Asked, Completions
 from lupus_ex_machina.llm.messages import Message
 from lupus_ex_machina.llm.throttling import Waiting
@@ -75,25 +79,69 @@ def game_of(client: TestClient) -> HostedGame:
     return hosted
 
 
-def followed_to_the_end(client: TestClient) -> list[dict[str, Any]]:
-    """Every fact that travelled to that client, over a whole game.
+class Followed(NamedTuple):
+    """Everything that travelled to one client over a whole game.
+
+    The questions are kept apart from the facts because they are not facts: a
+    question says what the game is waiting on its player for, and carries their
+    view rather than a sequence (D-096). Kept all the same — a capture that
+    dropped them would no longer be a capture of the whole traffic, which is
+    what the critical test of J8.3.3 rests on being.
+    """
+
+    events: list[dict[str, Any]]
+    questions: list[dict[str, Any]]
+
+
+def followed_to_the_end(client: TestClient, hand: Agent | None = None) -> Followed:
+    """Everything that travelled to that client, over a whole game.
 
     Confirms what it has shown as it goes, which is what a front end does and
     what lets the game go on: a hosted game runs a few turns ahead of its
     audience and waits once too many are in flight (J8.4). A reader that never
     confirmed would watch the game stop, which is the feature rather than a hang.
 
+    Answers what it is asked, when given a hand to answer with. A played game
+    waits on its person for as long as it takes (D-097), so a reader that never
+    answered would watch it stop at its opening night — which is the feature
+    too, and would leave a whole-game assertion with a corner of one to check.
+
     Reads until the server hangs up, which it does once the game has nothing
     more to say. Catching anything wider would let a broken socket read as a
     finished game, and the capture would fall short of what it is checking.
     """
-    captured: list[dict[str, Any]] = []
+    followed = Followed(events=[], questions=[])
     with client.websocket_connect("/api/game/stream") as stream, suppress(WebSocketDisconnect):
         while True:
-            sent = stream.receive_json()["events"]
-            captured.extend(sent)
-            stream.send_json({SHOWN: sent[-1]["sequence"]})
-    return captured
+            said = stream.receive_json()
+            followed.events.extend(said["events"])
+            if said["events"]:
+                stream.send_json({SHOWN: said["events"][-1]["sequence"]})
+            if (question := said.get("question")) is not None:
+                followed.questions.append(question)
+                _answer(stream, question, hand)
+    return followed
+
+
+def _answer(stream: WebSocketTestSession, question: dict[str, Any], hand: Agent | None) -> None:
+    """Answer a question with that hand, as a front end would on somebody's behalf.
+
+    A scripted agent rather than a policy written here: what a person answers
+    has to be a legal move like any other, and the agents of J2 already know how
+    to draw one from a view. A question being closed is not asked, so nothing is
+    answered to it.
+    """
+    if hand is None or question["state"] != QuestionState.PUT:
+        return
+
+    view = PlayerView.model_validate(question["view"])
+    asked_for = AskedFor(question["asked_for"])
+    answered = asyncio.run(
+        hand.decide(view, ()) if asked_for is AskedFor.TURN else hand.reflect(view, ())
+    )
+    stream.send_json(
+        {ANSWER: {"number": question["number"], "answered": answered.model_dump(mode="json")}}
+    )
 
 
 def _waits(seconds: float | None) -> Provider:

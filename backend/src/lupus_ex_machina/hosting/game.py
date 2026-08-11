@@ -17,21 +17,22 @@ from contextlib import AbstractContextManager, suppress
 from typing import TYPE_CHECKING
 
 from lupus_ex_machina.configuration.schema import GameConfiguration
+from lupus_ex_machina.engine.agent import Agent
 from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.journal import Journal
 from lupus_ex_machina.engine.players import Player, PlayerId
 from lupus_ex_machina.engine.replay import replay
 from lupus_ex_machina.engine.rng import create_rng
 from lupus_ex_machina.engine.runner import play_game
-from lupus_ex_machina.engine.runner.controls import Pacing
 from lupus_ex_machina.engine.setup import create_game
 from lupus_ex_machina.engine.state import GameState
 from lupus_ex_machina.engine.victory import Outcome
 from lupus_ex_machina.hosting.broadcast import Broadcaster, Heard
 from lupus_ex_machina.hosting.errors import AlreadyStartedError
-from lupus_ex_machina.hosting.lead import turns_of_lead
+from lupus_ex_machina.hosting.hands import Hands
+from lupus_ex_machina.hosting.human import HumanAgent
+from lupus_ex_machina.hosting.seating import seated_with, the_person_at
 from lupus_ex_machina.hosting.stage import Stage
-from lupus_ex_machina.llm.agent import LlmAgent
 from lupus_ex_machina.llm.table import seat_agents
 
 if TYPE_CHECKING:
@@ -55,14 +56,20 @@ class HostedGame:
         self._broadcaster = Broadcaster()
         self._journal = Journal(observer=self._broadcaster.note)
         completions = provider(configuration.system, self._broadcaster.note_a_wait)
-        self._agents: Mapping[PlayerId, LlmAgent] = seat_agents(
-            self._opening,
-            configuration.agents,
-            completions=completions,
-            seed=seed,
-            system=configuration.system,
+        self._person = the_person_at(
+            configuration, self._opening, announce=self._broadcaster.note_a_question
         )
-        self._pacing = Pacing(turns_in_flight=turns_of_lead(configuration))
+        self._agents: Mapping[PlayerId, Agent] = seated_with(
+            seat_agents(
+                self._opening,
+                configuration.agents,
+                completions=completions,
+                seed=seed,
+                system=configuration.system,
+            ),
+            self._person,
+        )
+        self._hands = Hands(configuration, self._person)
         self._stage = Stage.CREATED
         self._task: asyncio.Task[None] | None = None
         self._outcome: Outcome | None = None
@@ -81,6 +88,11 @@ class HostedGame:
     def outcome(self) -> Outcome | None:
         """Who won, once there is a winner."""
         return self._outcome
+
+    @property
+    def person(self) -> HumanAgent | None:
+        """The seat a person is playing, when the game was dealt with one (D-096)."""
+        return self._person
 
     @property
     def players(self) -> tuple[Player, ...]:
@@ -110,15 +122,10 @@ class HostedGame:
             return self._opening
         return replay(recorded, rules=self._configuration.rules)
 
-    def shown(self, sequence: int) -> None:
-        """Take note that a client has displayed everything up to that fact.
-
-        This is what lets the game go on: it runs a few turns ahead of whoever
-        is watching (D-023) and waits once too many are in flight — one single
-        turn when somebody is *playing*, so an absolute priority is always read
-        before the next turn (D-014).
-        """
-        self._pacing.shown(sequence)
+    @property
+    def hands(self) -> Hands:
+        """The controls this game is reached through from outside its rules."""
+        return self._hands
 
     def listening(self) -> AbstractContextManager[Heard]:
         """Listen to the facts this game records, for as long as the block lasts.
@@ -164,7 +171,9 @@ class HostedGame:
                 self._opening,
                 dict(self._agents),
                 journal=self._journal,
-                pacing=self._pacing,
+                control=self._hands.control,
+                claim=self._hands.claim,
+                pacing=self._hands.pacing,
                 rng=self._rng,
             )
             self._outcome = result.outcome

@@ -8,7 +8,7 @@ each with its own settings.
 from fastapi import FastAPI
 
 from lupus_ex_machina import __version__
-from lupus_ex_machina.api import auth, games, health, stream
+from lupus_ex_machina.api import auth, controls, games, health, stream
 from lupus_ex_machina.config import Settings
 from lupus_ex_machina.hosting import GameHost
 from lupus_ex_machina.hosting.host import Provider
@@ -40,6 +40,7 @@ def create_app(settings: Settings | None = None, *, provider: Provider | None = 
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(games.router)
+    app.include_router(controls.router)
     app.include_router(stream.router)
 
     # Order matters: the front end mount answers every path left, so it comes last.
