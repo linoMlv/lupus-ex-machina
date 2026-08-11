@@ -32,6 +32,7 @@ from lupus_ex_machina.api.progress import Progress, let_the_game_go_on
 from lupus_ex_machina.api.session import SESSION_COOKIE
 from lupus_ex_machina.engine.events import Event
 from lupus_ex_machina.engine.journal import project_journal
+from lupus_ex_machina.engine.recollection import recollected
 from lupus_ex_machina.hosting import GameHost, HostedGame
 from lupus_ex_machina.hosting.audience import recipient_for
 from lupus_ex_machina.hosting.broadcast import Heard, Told
@@ -150,12 +151,33 @@ async def _send(
     journal was read, and the last sequence that went out.
     """
     fresh = tuple(event for event in events if event.sequence > after)
-    theirs = project_journal(fresh, recipient_for(game.state))
+    theirs = _for(game, project_journal(fresh, recipient_for(game.state)))
     if theirs:
         await _say(websocket, Broadcast(events=theirs))
         progress.wired = theirs[-1].sequence
     progress.read = max((event.sequence for event in fresh), default=after)
     let_the_game_go_on(game, progress)
+
+
+def _for(game: HostedGame, projected: tuple[Event, ...]) -> tuple[Event, ...]:
+    """The same facts, minus what this recipient may no longer look up (D-111).
+
+    The same rule the engine applies to what it hands an agent, applied to the
+    one player who has a screen: without it, the option would bind models alone
+    and the screen would become a systematic advantage (D-017).
+
+    **The spectator is left whole**, and so is a player whose character has died
+    under D-105 — ``recipient_for`` already answers the spectator for both. They
+    watch a game they are not in, and D-111 governs what somebody still *playing*
+    may re-read.
+
+    One filter, two behaviours, without a case for either: a count travelling on
+    the day it is read out is of the day in progress and stays, while the same
+    fact replayed to a client catching up is old and goes.
+    """
+    if recipient_for(game.state).is_spectator:
+        return projected
+    return recollected(projected, day=game.state.day, information=game.state.rules.information)
 
 
 async def _say(websocket: WebSocket, broadcast: Broadcast) -> None:

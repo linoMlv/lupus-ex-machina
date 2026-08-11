@@ -24,6 +24,7 @@ from lupus_ex_machina.engine.intents import Intent
 from lupus_ex_machina.engine.journal import Journal, project_journal
 from lupus_ex_machina.engine.phases import Phase
 from lupus_ex_machina.engine.players import PlayerId
+from lupus_ex_machina.engine.recollection import recollected
 from lupus_ex_machina.engine.rng import Rng
 from lupus_ex_machina.engine.runner import notes
 from lupus_ex_machina.engine.state import GameState
@@ -87,10 +88,20 @@ class Scribe:
 
         Both filtered here, at the source: an agent able to read the whole
         journal would be one line away from every secret in the game (D-046).
+
+        Two filters rather than one, and they answer different questions. The
+        projection says **who may know** (D-009); the recollection says what may
+        still be **looked up** of rounds that are over (D-111). Everyone was
+        entitled to a count when it was read out — what the second one takes away
+        is the re-reading, which is why it cannot live inside the first.
         """
         return (
             project(state, player),
-            project_journal(self._journal.events, Recipient.of(state.player(player))),
+            recollected(
+                project_journal(self._journal.events, Recipient.of(state.player(player))),
+                day=state.day,
+                information=state.rules.information,
+            ),
         )
 
     async def ask(self, state: GameState, player: PlayerId) -> Intent:

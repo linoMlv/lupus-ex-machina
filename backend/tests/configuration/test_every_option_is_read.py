@@ -37,12 +37,6 @@ UNREAD: dict[str, str] = {
     "rules.information.show_personalities": (
         "what a spectator is shown of a temperament, read by J11 (D-064)"
     ),
-    "rules.information.public_vote_history": (
-        "DEFECT, found by this guard on 2026-08-10 and reported: nothing reads it, "
-        "so the past ballots reach every agent whatever it is set to. Making it "
-        "true would prune facts from the journal an agent is handed, which is a "
-        "rule of the game and belongs to the project owner, not to this jalon"
-    ),
 }
 
 
