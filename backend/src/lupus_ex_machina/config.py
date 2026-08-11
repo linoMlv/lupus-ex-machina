@@ -13,7 +13,7 @@ import secrets
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -71,10 +71,27 @@ class Settings(BaseSettings):
     without protecting it, against one more dependency. Absent, the door stays
     shut: forgetting to set a password must never be what opens it."""
 
-    secret_key: str = Field(
-        default_factory=lambda: secrets.token_hex(32),
-        description="Key the session cookie is signed with. Drawn afresh when unset.",
+    secret_key: str | None = Field(
+        default=None,
+        description="Secret the session cookie is signed with, and provider keys are kept under.",
     )
-    """Drawn at start-up when nobody supplies one, which logs everyone out on a
-    restart. That is the right way round: a key nobody chose is better than a
-    known one, and a private application restarts rarely."""
+    """**Optional here, and read two different ways** — which is the whole reason
+    it is no longer drawn in this field.
+
+    The cookie does without it (D-098): :attr:`session_key` draws one at
+    start-up, which logs everyone out on a restart and costs nothing. A key
+    nobody chose beats a known one, and a private application restarts rarely.
+
+    The provider registry cannot do the same (D-113). Keys encrypted under a
+    drawn secret would be **unreadable** at the next restart, so registering one
+    without a supplied secret is refused rather than half-done. Telling the two
+    apart is what this field being ``None`` says."""
+
+    _drawn_key: str = PrivateAttr(default_factory=lambda: secrets.token_hex(32))
+    """The stand-in for an unsupplied secret. Drawn once per process, so a
+    session outlives a request without outliving a restart."""
+
+    @property
+    def session_key(self) -> str:
+        """What the session cookie is signed with, supplied or drawn (D-098)."""
+        return self.secret_key if self.secret_key is not None else self._drawn_key

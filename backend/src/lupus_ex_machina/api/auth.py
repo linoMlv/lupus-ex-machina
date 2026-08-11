@@ -67,7 +67,7 @@ def is_authenticated(token: str | None, settings: Settings) -> bool:
     """
     if token is None:
         return False
-    return valid(token, settings.secret_key, at=utc_now())
+    return valid(token, settings.session_key, at=utc_now())
 
 
 def settings_of(request: Request) -> Settings:
@@ -100,7 +100,7 @@ async def open_session(credentials: Credentials, request: Request, response: Res
 
     response.set_cookie(
         SESSION_COOKIE,
-        minted(settings.secret_key, at=utc_now()),
+        minted(settings.session_key, at=utc_now()),
         max_age=int(SESSION_LIFETIME.total_seconds()),
         httponly=True,
         samesite="strict",

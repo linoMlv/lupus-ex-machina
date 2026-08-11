@@ -7,6 +7,9 @@ description = "Werewolf simulator played by autonomous LLM agents"
 requires-python = ">=3.13"
 license = "EUPL-1.2"
 dependencies = [
+    # Authenticated encryption for the provider keys kept on disk (D-113).
+    # Writing one's own is the worst idea available; this is the standard.
+    "cryptography>=46.0.4",
     "fastapi>=0.121.0",
     # The one HTTP client the project needs: asynchronous, and no proprietary
     # SDK anywhere near the models (D-043).
