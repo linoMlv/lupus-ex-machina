@@ -15,7 +15,6 @@ models; everything around them is English (HR-6).
 """
 
 import asyncio
-import json
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -27,6 +26,7 @@ from lupus_ex_machina.llm.backoff import RetryPolicy
 from lupus_ex_machina.llm.completions import Answer, Asked
 from lupus_ex_machina.llm.errors import ModelAnswerError, ThrottledError
 from lupus_ex_machina.llm.messages import Message, Role
+from lupus_ex_machina.llm.requests import completion_body
 from lupus_ex_machina.llm.throttling import TOO_MANY_REQUESTS, Sleep, Waiting, sent_through
 
 #: Asked once more, and only once: a model that will not comply on the second
@@ -181,7 +181,7 @@ class ChatClient:
         wrong rather than early, and retrying it would spend a minute finding
         out the same thing again.
         """
-        body = self._body(
+        body = completion_body(
             model=model, messages=messages, schema=schema, temperature=temperature, top_p=top_p
         )
         response = await sent_through(
@@ -194,31 +194,6 @@ class ChatClient:
         response.raise_for_status()
         answered: str = response.json()["choices"][0]["message"]["content"]
         return answered
-
-    @staticmethod
-    def _body(
-        *,
-        model: str,
-        messages: Sequence[Message],
-        schema: type[Answer],
-        temperature: float,
-        top_p: float,
-    ) -> dict[str, Any]:
-        """The request one completion is, as the OpenAI protocol describes it."""
-        return {
-            "model": model,
-            "messages": [json.loads(message.model_dump_json()) for message in messages],
-            "temperature": temperature,
-            "top_p": top_p,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema.__name__,
-                    "schema": schema.model_json_schema(),
-                    "strict": True,
-                },
-            },
-        }
 
     async def _post(self, body: dict[str, Any]) -> httpx2.Response:
         """Send one completion request. What the throttling calls to try again."""
