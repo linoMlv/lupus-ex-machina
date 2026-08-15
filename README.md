@@ -207,6 +207,19 @@ d'implémentation en douze jalons. Le développement suit une approche **TDD str
   attend le temps qu'il faudra — sauf si vous avez réglé un minuteur, auquel cas votre tour passe
   sans que vous ayez rien fait.
 
+- **J8bis — Les fournisseurs de modèles** *(en cours)*. Une partie n'est plus liée à une seule clé
+  d'API : le serveur tient un registre de fournisseurs, chacun un endpoint compatible OpenAI, et un
+  siège pourra enchérir chez l'un et parler chez l'autre. Les clés sont **chiffrées au repos** et ne
+  ressortent jamais — on n'en voit que les quatre derniers caractères, de quoi reconnaître la sienne
+  et rien d'autre ; sans secret de chiffrement configuré, en enregistrer une est refusé plutôt que
+  fait à moitié. Les modèles proposés ne sont écrits nulle part : ils sont demandés au fournisseur.
+  Et parce que tout le projet repose sur des réponses au format imposé, chaque modèle est sondé la
+  première fois qu'on s'en sert — une seule fois, le verdict étant retenu. Un échec de sonde ne
+  condamne personne : tant que le fournisseur n'a pas dit lui-même qu'il refuse ce format, un quota
+  épuisé ou un réseau coupé n'apprend rien, et la question est simplement reposée plus tard.
+
+  *L'écran qui s'en sert vient avec l'interface ; pour l'instant tout cela vit côté serveur.*
+
 Vient ensuite la scène 3D.
 
 ---
