@@ -9,16 +9,33 @@ playable without a server or any stored state, which is what makes it a way of
 checking things (GL-2).
 """
 
+from lupus_ex_machina.providers.admission import admitted
+from lupus_ex_machina.providers.cards import ProviderCard
+from lupus_ex_machina.providers.catalogue import (
+    Catalogue,
+    ModelsOffered,
+    ProviderUnreachable,
+    catalogue_of,
+)
+from lupus_ex_machina.providers.compatibility import compatibility_of, probed
 from lupus_ex_machina.providers.registry import (
-    ProviderCard,
     ProviderError,
     ProviderRegistry,
     UnknownProviderError,
 )
+from lupus_ex_machina.providers.verdicts import Verdict
 
 __all__ = [
+    "Catalogue",
+    "ModelsOffered",
     "ProviderCard",
     "ProviderError",
     "ProviderRegistry",
+    "ProviderUnreachable",
     "UnknownProviderError",
+    "Verdict",
+    "admitted",
+    "catalogue_of",
+    "compatibility_of",
+    "probed",
 ]
